@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 import SupabaseConnection from '../../components/admin/SupabaseConnection';
+import ConfirmDialog from '../../components/common/ConfirmDialog';
 import CountryCodesEditor from '../../components/admin/CountryCodesEditor';
 import StayScheduleSettings from '../../components/admin/StayScheduleSettings';
 import { accountsApi } from '../../api/client';
@@ -859,6 +860,7 @@ function GallerySection() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ image_url: '', title: '', category: 'instalaciones', description: '' });
   const [formError, setFormError] = useState<string | null>(null);
+  const [imageToDelete, setImageToDelete] = useState<{ id: string; title: string | null } | null>(null);
 
   const types = (Array.isArray(typesData) ? typesData : []) as RoomTypeInventory[];
   const units = (Array.isArray(unitsData) ? unitsData : []) as RoomUnit[];
@@ -925,6 +927,17 @@ function GallerySection() {
     }
   };
 
+  const confirmDeleteImage = async () => {
+    if (!imageToDelete) return;
+    try {
+      await deleteGalleryItem.mutateAsync(imageToDelete.id);
+      toast.success('Imagen eliminada');
+      setImageToDelete(null);
+    } catch {
+      toast.error('No se pudo eliminar la imagen');
+    }
+  };
+
   if (typesError) {
     return (
       <div className="bg-white rounded-xl border border-gray-100 p-10 text-center">
@@ -936,6 +949,21 @@ function GallerySection() {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={Boolean(imageToDelete)}
+        title="Eliminar imagen"
+        description={
+          imageToDelete?.title
+            ? `¿Eliminar la imagen “${imageToDelete.title}”? Esta acción no se puede deshacer.`
+            : '¿Eliminar esta imagen? Esta acción no se puede deshacer.'
+        }
+        confirmLabel="Eliminar imagen"
+        busy={deleteGalleryItem.isPending}
+        onConfirm={() => void confirmDeleteImage()}
+        onCancel={() => {
+          if (!deleteGalleryItem.isPending) setImageToDelete(null);
+        }}
+      />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-serif text-gray-900">Galería</h2>
@@ -1218,9 +1246,7 @@ function GallerySection() {
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm('¿Eliminar esta imagen?')) deleteGalleryItem.mutate(item.id);
-                  }}
+                  onClick={() => setImageToDelete(item)}
                   disabled={deleteGalleryItem.isPending}
                   title="Eliminar imagen"
                   className="absolute top-2 right-2 p-2 rounded-lg bg-white/90 text-gray-600 hover:text-red-600 transition-colors disabled:opacity-50"
@@ -1299,9 +1325,21 @@ function CommentsSection() {
   const { data: comments, isLoading, error } = useAllComments(selectedHotelId || '');
   const setStatus = useSetCommentStatus();
   const deleteComment = useDeleteComment();
+  const [commentToDelete, setCommentToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  const confirmDeleteComment = async () => {
+    if (!commentToDelete) return;
+    try {
+      await deleteComment.mutateAsync(commentToDelete.id);
+      setCommentToDelete(null);
+    } catch {
+      toast.error('No se pudo eliminar el comentario');
+    }
+  };
 
   return (
-    <DataSection
+    <>
+      <DataSection
       title="Comentarios"
       description="Gestiona los comentarios y testimonios."
       isLoading={isLoading}
@@ -1357,9 +1395,7 @@ function CommentsSection() {
           )}
           <button
             type="button"
-            onClick={() => {
-              if (window.confirm('¿Eliminar este comentario?')) deleteComment.mutate(item.id);
-            }}
+            onClick={() => setCommentToDelete({ id: item.id, name: item.name })}
             disabled={deleteComment.isPending}
             title="Eliminar comentario"
             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
@@ -1368,7 +1404,19 @@ function CommentsSection() {
           </button>
         </>
       )}
-    />
+      />
+      <ConfirmDialog
+        open={Boolean(commentToDelete)}
+        title="Eliminar comentario"
+        description={`¿Eliminar el comentario de ${commentToDelete?.name || 'este autor'}? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar comentario"
+        busy={deleteComment.isPending}
+        onConfirm={() => void confirmDeleteComment()}
+        onCancel={() => {
+          if (!deleteComment.isPending) setCommentToDelete(null);
+        }}
+      />
+    </>
   );
 }
 
@@ -1561,6 +1609,7 @@ function PromotionsSection() {
   const [form, setForm] = useState({ ...EMPTY_PROMOTION });
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [promotionToDelete, setPromotionToDelete] = useState<Promotion | null>(null);
 
   const openNew = () => {
     setEditingId(null);
@@ -1633,16 +1682,19 @@ function PromotionsSection() {
     }
   };
 
-  const handleDelete = async (promotion: Promotion) => {
-    if (!window.confirm(`¿Eliminar la promoción "${promotion.title}"?`)) return;
+  const handleDelete = async () => {
+    const promotion = promotionToDelete;
+    if (!promotion) return;
     setDeletingId(promotion.id);
     try {
       await deletePromotion.mutateAsync(promotion.id);
+      setPromotionToDelete(null);
       toast.success('Promoción eliminada');
     } catch (deleteError) {
       toast.error(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar');
+    } finally {
+      setDeletingId(null);
     }
-    setDeletingId(null);
   };
 
   if (isLoading) {
@@ -1667,6 +1719,17 @@ function PromotionsSection() {
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={Boolean(promotionToDelete)}
+        title="Eliminar promoción"
+        description={`¿Eliminar la promoción “${promotionToDelete?.title || ''}”? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar promoción"
+        busy={Boolean(deletingId)}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => {
+          if (!deletingId) setPromotionToDelete(null);
+        }}
+      />
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-serif text-gray-900">Promociones</h2>
@@ -1883,7 +1946,7 @@ function PromotionsSection() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleDelete(promotion)}
+                  onClick={() => setPromotionToDelete(promotion)}
                   disabled={deletingId === promotion.id}
                   className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
                   title="Eliminar"
@@ -1926,6 +1989,7 @@ function ClientsSection() {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [clientToDelete, setClientToDelete] = useState<ClientAccount | null>(null);
   const [countryFilter, setCountryFilter] = useState('');
 
   const { countries: countryOptions, hasClientsWithoutCountry } = useMemo(() => {
@@ -2000,20 +2064,34 @@ function ClientsSection() {
     }
   };
 
-  const handleDelete = async (client: ClientAccount) => {
-    if (!window.confirm(`¿Eliminar la cuenta de ${client.name}?`)) return;
+  const handleDelete = async () => {
+    const client = clientToDelete;
+    if (!client) return;
     setDeletingId(client.id);
     const { error: deleteError } = await accountsApi.remove('clients', client.id);
     setDeletingId(null);
     if (deleteError) {
-      setError(deleteError);
+      toast.error(deleteError);
       return;
     }
     setClients((current) => current.filter((item) => item.id !== client.id));
+    setClientToDelete(null);
+    toast.success('Cliente eliminado');
   };
 
   return (
     <div className="space-y-4">
+      <ConfirmDialog
+        open={Boolean(clientToDelete)}
+        title="Eliminar cliente"
+        description={`¿Eliminar la cuenta de ${clientToDelete?.name || 'este cliente'}? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar cliente"
+        busy={Boolean(deletingId)}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => {
+          if (!deletingId) setClientToDelete(null);
+        }}
+      />
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-3">
           <h3 className="text-lg font-serif text-gray-900">Nuevo cliente</h3>
@@ -2144,7 +2222,7 @@ function ClientsSection() {
         rowActions={(item: ClientAccount) => (
           <button
             type="button"
-            onClick={() => handleDelete(item)}
+            onClick={() => setClientToDelete(item)}
             disabled={deletingId === item.id}
             title="Eliminar cliente"
             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
@@ -2189,6 +2267,7 @@ function UsersSection() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
   const roleLabels: Record<string, string> = {
     admin: 'Administrador',
@@ -2292,11 +2371,9 @@ function UsersSection() {
     }
   };
 
-  const handleDelete = async (user: User) => {
-    if (user.id === currentUser?.id) return;
-    if (!window.confirm(`¿Eliminar la cuenta de ${user.name} (@${user.username || 'sin usuario'})?`)) {
-      return;
-    }
+  const handleDelete = async () => {
+    const user = userToDelete;
+    if (!user || user.id === currentUser?.id) return;
     setDeletingId(user.id);
     setActionError(null);
     const { error: deleteError } = await accountsApi.remove('users', user.id);
@@ -2306,11 +2383,23 @@ function UsersSection() {
       return;
     }
     await queryClient.invalidateQueries({ queryKey: ['users'] });
+    setUserToDelete(null);
     toast.success('Usuario eliminado');
   };
 
   return (
     <div className="space-y-4">
+      <ConfirmDialog
+        open={Boolean(userToDelete)}
+        title="Eliminar usuario"
+        description={`¿Eliminar la cuenta de ${userToDelete?.name || 'este usuario'}${userToDelete?.username ? ` (@${userToDelete.username})` : ''}? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar usuario"
+        busy={Boolean(deletingId)}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => {
+          if (!deletingId) setUserToDelete(null);
+        }}
+      />
       {viewing && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4"
@@ -2525,7 +2614,7 @@ function UsersSection() {
             </button>
             <button
               type="button"
-              onClick={() => void handleDelete(item)}
+              onClick={() => setUserToDelete(item)}
               disabled={item.id === currentUser?.id || deletingId === item.id}
               title={item.id === currentUser?.id ? 'No podés eliminar tu propia cuenta' : 'Eliminar usuario'}
               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30"

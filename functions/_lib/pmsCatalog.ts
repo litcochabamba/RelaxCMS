@@ -151,35 +151,83 @@ export function inferGroup(name: string): 'habitacion' | 'departamento' {
   return /^\s*(dep\.?|departamento)\b/i.test(clean(name)) ? 'departamento' : 'habitacion';
 }
 
-export async function fetchPmsCatalog(env: Env): Promise<PmsCatalog | null> {
+export interface PmsCatalogResult {
+  catalog: PmsCatalog | null;
+  error: string | null;
+  status: number;
+}
+
+export async function fetchPmsCatalog(env: Env): Promise<PmsCatalogResult> {
   const { base, key } = pmsConfig(env);
-  if (!base || !key) return null;
+  if (!base || !key) {
+    return {
+      catalog: null,
+      error:
+        'Falta configurar RELAXPMS_API_URL y la clave de integración en el CMS (RELAXPMS_API_KEY o INTEGRATIONS_API_KEY).',
+      status: 503,
+    };
+  }
 
   try {
     const response = await fetch(`${base}/api/integrations/v1/room-catalog`, {
       headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!response.ok) return null;
+
+    if (!response.ok) {
+      const detail = (await response.json().catch(() => null)) as { error?: string } | null;
+      const serverMessage = clean(detail?.error);
+      let message = `RelaxPMS respondió HTTP ${response.status}`;
+
+      if (response.status === 401 || response.status === 403) {
+        message =
+          `RelaxPMS rechazó la clave de integración (HTTP ${response.status}). ` +
+          'Verificá que RELAXPMS_API_KEY del CMS coincida con INTEGRATIONS_API_KEY del PMS.';
+      } else if (response.status === 404) {
+        message =
+          'RelaxPMS no tiene el endpoint /api/integrations/v1/room-catalog (HTTP 404). ' +
+          'Verificá que el PMS esté actualizado y que RELAXPMS_API_URL apunte al sitio correcto.';
+      } else if (serverMessage) {
+        message += `: ${serverMessage}`;
+      }
+
+      console.error('[pms-import] catálogo rechazado:', response.status, serverMessage || '');
+      return { catalog: null, error: message, status: 502 };
+    }
 
     const body = (await response.json().catch(() => null)) as
       | { data?: { types?: PmsCatalogType[]; rooms?: PmsCatalogRoom[] } | null }
       | null;
     const types = body?.data?.types;
     const rooms = body?.data?.rooms;
-    if (!Array.isArray(types) || !Array.isArray(rooms)) return null;
+    if (!Array.isArray(types) || !Array.isArray(rooms)) {
+      return {
+        catalog: null,
+        error: 'RelaxPMS devolvió un catálogo con un formato inesperado.',
+        status: 502,
+      };
+    }
 
     return {
-      types: types.filter((type) => Number.isFinite(Number(type?.pms_id)) && clean(type?.name)),
-      rooms: rooms.filter(
-        (room) =>
-          Number.isFinite(Number(room?.pms_id)) &&
-          Number.isFinite(Number(room?.pms_room_type_id)) &&
-          clean(room?.name)
-      ),
+      catalog: {
+        types: types.filter((type) => Number.isFinite(Number(type?.pms_id)) && clean(type?.name)),
+        rooms: rooms.filter(
+          (room) =>
+            Number.isFinite(Number(room?.pms_id)) &&
+            Number.isFinite(Number(room?.pms_room_type_id)) &&
+            clean(room?.name)
+        ),
+      },
+      error: null,
+      status: 200,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    console.error('[pms-import] no se pudo conectar con RelaxPMS:', error);
+    return {
+      catalog: null,
+      error: 'No se pudo conectar con RelaxPMS. Revisá RELAXPMS_API_URL y que el PMS esté en línea.',
+      status: 502,
+    };
   }
 }
 

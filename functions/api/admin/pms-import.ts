@@ -82,16 +82,18 @@ async function loadCmsCatalog(env: Env, hotelId: string): Promise<CmsCatalogResu
 }
 
 async function preview(env: Env, hotelId: string): Promise<Response> {
-  const catalog = await fetchPmsCatalog(env);
-  if (!catalog) {
+  const pms = await fetchPmsCatalog(env);
+  if (!pms.catalog) {
     return json(
       {
         error:
+          pms.error ||
           'No se pudo leer el catálogo de RelaxPMS. Revisá que el PMS esté en línea y que RELAXPMS_API_URL esté configurada.',
       },
-      502
+      pms.status
     );
   }
+  const catalog = pms.catalog;
 
   const cms = await loadCmsCatalog(env, hotelId);
   if (!cms.ok) return json({ error: cms.error }, cms.status);
@@ -101,16 +103,18 @@ async function preview(env: Env, hotelId: string): Promise<Response> {
 }
 
 async function apply(env: Env, hotelId: string, overwriteNames: boolean): Promise<Response> {
-  const catalog = await fetchPmsCatalog(env);
-  if (!catalog) {
+  const pms = await fetchPmsCatalog(env);
+  if (!pms.catalog) {
     return json(
       {
         error:
+          pms.error ||
           'No se pudo leer el catálogo de RelaxPMS. Revisá que el PMS esté en línea y que RELAXPMS_API_URL esté configurada.',
       },
-      502
+      pms.status
     );
   }
+  const catalog = pms.catalog;
 
   const cms = await loadCmsCatalog(env, hotelId);
   if (!cms.ok) return json({ error: cms.error }, cms.status);

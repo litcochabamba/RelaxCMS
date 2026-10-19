@@ -33,6 +33,7 @@ import {
   useUpdateAttraction,
 } from '../../hooks/useQueries';
 import type { Attraction, AttractionImage } from '../../types';
+import ConfirmDialog from '../common/ConfirmDialog';
 
 export interface AttractionsEditorHandle {
   save: () => Promise<void>;
@@ -137,6 +138,8 @@ const AttractionsEditor = forwardRef<AttractionsEditorHandle, AttractionsEditorP
     const [uploadingKey, setUploadingKey] = useState<string | null>(null);
     const [removingMediaId, setRemovingMediaId] = useState<string | null>(null);
     const [geocodingKey, setGeocodingKey] = useState<string | null>(null);
+    const [attractionToDelete, setAttractionToDelete] = useState<AttractionDraft | null>(null);
+    const [mediaToDelete, setMediaToDelete] = useState<AttractionImage | null>(null);
     const { folders } = useAttractionsMedia();
     const queryClient = useQueryClient();
 
@@ -197,12 +200,14 @@ const AttractionsEditor = forwardRef<AttractionsEditorHandle, AttractionsEditorP
       queryClient.invalidateQueries({ queryKey: ['attractionsWithImages'] });
 
     const remove = (draft: AttractionDraft) => {
-      const confirmed = window.confirm(
-        `¿Eliminar "${draft.title}"? Sus archivos no se borran. Se aplica al guardar.`
-      );
-      if (!confirmed) return;
-      setDrafts((prev) => prev.filter((item) => item.key !== draft.key));
-      if (editingKey === draft.key) setEditingKey(null);
+      setAttractionToDelete(draft);
+    };
+
+    const confirmRemove = () => {
+      if (!attractionToDelete) return;
+      setDrafts((prev) => prev.filter((item) => item.key !== attractionToDelete.key));
+      if (editingKey === attractionToDelete.key) setEditingKey(null);
+      setAttractionToDelete(null);
     };
 
     const add = () => {
@@ -314,8 +319,13 @@ const AttractionsEditor = forwardRef<AttractionsEditorHandle, AttractionsEditorP
       setSavingDurationKey(null);
     };
 
-    const removeMedia = async (image: AttractionImage) => {
-      if (!window.confirm('¿Eliminar este archivo? Se borra también del almacenamiento.')) return;
+    const removeMedia = (image: AttractionImage) => {
+      setMediaToDelete(image);
+    };
+
+    const confirmRemoveMedia = async () => {
+      const image = mediaToDelete;
+      if (!image) return;
       setRemovingMediaId(image.id);
       const path = storagePathFromUrl(image.image_url);
       const { error } = await db.delete('atractivo_imagenes', { id: image.id });
@@ -330,6 +340,7 @@ const AttractionsEditor = forwardRef<AttractionsEditorHandle, AttractionsEditorP
       }
       await refreshMedia();
       setRemovingMediaId(null);
+      setMediaToDelete(null);
     };
 
     useImperativeHandle(ref, () => ({
@@ -763,6 +774,26 @@ const AttractionsEditor = forwardRef<AttractionsEditorHandle, AttractionsEditorP
           Los cambios de texto y coordenadas se aplican con Guardar cambios. Los archivos se suben al
           instante.
         </p>
+
+        <ConfirmDialog
+          open={Boolean(attractionToDelete)}
+          title="Eliminar atractivo"
+          description={`¿Eliminar “${attractionToDelete?.title || ''}”? Sus archivos no se borran. Esta acción se aplica al guardar.`}
+          confirmLabel="Eliminar atractivo"
+          onConfirm={confirmRemove}
+          onCancel={() => setAttractionToDelete(null)}
+        />
+        <ConfirmDialog
+          open={Boolean(mediaToDelete)}
+          title="Eliminar archivo"
+          description="¿Eliminar este archivo? También se borra del almacenamiento. Esta acción no se puede deshacer."
+          confirmLabel="Eliminar archivo"
+          busy={removingMediaId === mediaToDelete?.id}
+          onConfirm={() => void confirmRemoveMedia()}
+          onCancel={() => {
+            if (!removingMediaId) setMediaToDelete(null);
+          }}
+        />
       </div>
     );
   }

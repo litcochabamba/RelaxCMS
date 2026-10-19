@@ -32,6 +32,7 @@ import {
   useUpsertHotelConfig,
 } from '../../hooks/useQueries';
 import type { Amenity } from '../../types';
+import ConfirmDialog from '../common/ConfirmDialog';
 import toast from 'react-hot-toast';
 
 interface AmenityDraft {
@@ -107,6 +108,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [editingItem, setEditingItem] = useState<string | null>(null);
     const [newGroup, setNewGroup] = useState('');
+    const [groupToDelete, setGroupToDelete] = useState<GroupDraft | null>(null);
 
     const createAmenity = useCreateAmenity();
     const updateAmenity = useUpdateAmenity();
@@ -157,12 +159,16 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
 
     const removeGroup = (group: GroupDraft) => {
       if (group.items.length > 0) {
-        const confirmed = window.confirm(
-          `¿Eliminar el grupo "${group.category}" y sus ${group.items.length} ítem(s)? Esta acción se aplica al guardar.`
-        );
-        if (!confirmed) return;
+        setGroupToDelete(group);
+        return;
       }
       setGroups((prev) => prev.filter((item) => item.key !== group.key));
+    };
+
+    const confirmRemoveGroup = () => {
+      if (!groupToDelete) return;
+      setGroups((prev) => prev.filter((item) => item.key !== groupToDelete.key));
+      setGroupToDelete(null);
     };
 
     const addGroup = () => {
@@ -609,6 +615,15 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
             Los cambios de grupos e ítems se aplican con Guardar cambios.
           </p>
         )}
+
+        <ConfirmDialog
+          open={Boolean(groupToDelete)}
+          title="Eliminar grupo"
+          description={`¿Eliminar el grupo “${groupToDelete?.category || ''}” y sus ${groupToDelete?.items.length || 0} ítem(s)? Esta acción se aplica al guardar.`}
+          confirmLabel="Eliminar grupo"
+          onConfirm={confirmRemoveGroup}
+          onCancel={() => setGroupToDelete(null)}
+        />
       </div>
     );
   }
