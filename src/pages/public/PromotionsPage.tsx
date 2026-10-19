@@ -59,7 +59,7 @@ export default function PromotionsPage() {
   }, [promotionsData]);
 
   useEffect(() => {
-    document.title = 'Promociones · Hostal Relax';
+    document.title = 'Promociones · Hostal Relax II';
   }, []);
 
   const generalWhatsApp = whatsappLink(whatsapp);
