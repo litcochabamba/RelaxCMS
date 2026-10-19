@@ -22,6 +22,7 @@ import { handleClientReservations } from "./functions/api/client/reservations";
 import { handleIntegrationReservations } from "./functions/api/integrations/v1/reservations";
 import { handleIntegrationPromotions } from "./functions/api/integrations/v1/promotions";
 import { handleAdminReservations } from "./functions/api/admin/reservations";
+import { onRequest as handlePmsImport } from "./functions/api/admin/pms-import";
 import type { Env } from "./functions/_lib/env";
 
 type HeroMediaItem = { name: string; url: string; type?: "image" | "video" };
@@ -280,6 +281,8 @@ function devApiPlugin(loadEnvVars: () => Record<string, string>): Plugin {
             response = await handleIntegrationPromotions(request, typedEnv);
           else if (pathname === "/api/admin/reservations")
             response = await handleAdminReservations(request, typedEnv);
+          else if (pathname === "/api/admin/pms-import")
+            response = await handlePmsImport({ request, env: typedEnv });
           if (!response) return next();
 
           res.statusCode = response.status;

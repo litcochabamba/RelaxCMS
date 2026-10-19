@@ -21,7 +21,7 @@ const ALLOWED_TABLES = new Set([
   'seo_config',
 ]);
 
-type Action = 'insert' | 'update' | 'delete';
+type Action = 'insert' | 'update' | 'delete' | 'select';
 
 function buildFilters(filters?: Record<string, unknown>): string {
   if (!filters) return '';
@@ -31,6 +31,32 @@ function buildFilters(filters?: Record<string, unknown>): string {
     params.append(key, `eq.${String(value)}`);
   }
   return params.toString();
+}
+
+/**
+ * Lectura desde el panel. Va por el servidor con la service role key porque
+ * las políticas RLS de Supabase ocultan las filas con `active = false` a
+ * cualquier token de navegador —incluido el del personal—. Sin esto, al
+ * ocultar un tipo de habitación desaparece del CMS y no se puede volver a
+ * mostrar. La sesión y el rol se validan igual que en las escrituras.
+ */
+async function selectRows(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const params = new URLSearchParams(buildFilters(body.filters as Record<string, unknown> | undefined));
+
+  const order = body.order as { column?: unknown; ascending?: unknown } | undefined;
+  const column = String(order?.column ?? '');
+  if (column) {
+    if (!/^[a-z0-9_]+$/i.test(column)) return json({ error: 'Orden no válido' }, 400);
+    params.set('order', `${column}.${order?.ascending === false ? 'desc' : 'asc'}`);
+  }
+
+  const limit = Number(body.limit);
+  if (Number.isFinite(limit) && limit > 0) params.set('limit', String(Math.min(limit, 2000)));
+
+  const query = params.toString();
+  const result = await serviceRequest<Record<string, unknown>[]>(env, query ? `${body.table}?${query}` : String(body.table));
+  if (result.error) return json({ data: null, error: result.error }, 400);
+  return json({ data: result.data ?? [], error: null });
 }
 
 export async function handleDb(request: Request, env: Env): Promise<Response> {
@@ -43,16 +69,25 @@ export async function handleDb(request: Request, env: Env): Promise<Response> {
   }
 
   const body = (await request.json().catch(() => null)) as
-    | { table?: string; action?: Action; data?: unknown; filters?: Record<string, unknown> }
+    | {
+        table?: string;
+        action?: Action;
+        data?: unknown;
+        filters?: Record<string, unknown>;
+        order?: { column?: string; ascending?: boolean };
+        limit?: number;
+      }
     | null;
 
   const table = body?.table;
   const action = body?.action;
 
   if (!table || !ALLOWED_TABLES.has(table)) return json({ error: 'Tabla no permitida' }, 400);
-  if (action !== 'insert' && action !== 'update' && action !== 'delete') {
+  if (action !== 'insert' && action !== 'update' && action !== 'delete' && action !== 'select') {
     return json({ error: 'Acción no permitida' }, 400);
   }
+
+  if (action === 'select') return selectRows(env, { ...body, table });
 
   const query = buildFilters(body?.filters);
   if (action !== 'insert' && !query) return json({ error: 'La operación necesita filtros' }, 400);

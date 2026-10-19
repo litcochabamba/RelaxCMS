@@ -1,15 +1,30 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BedDouble,
   Building2,
+  CalendarDays,
   ChevronDown,
   Loader2,
   MapPin,
   Sparkles,
   Users,
+  X,
 } from 'lucide-react';
-import { useGallery, useHotelConfig, useHotels, useRoomTypes, useRoomUnits } from '../../hooks/useQueries';
+import toast from 'react-hot-toast';
+import { bookingApi, clientApi } from '../../api/client';
+import { useAuthStore } from '../../store/authStore';
+import CountryPhoneInput from '../../components/common/CountryPhoneInput';
+import { useCountryCodes } from '../../hooks/useCountryCodes';
+import {
+  useGallery,
+  useHotelConfig,
+  useHotels,
+  useRoomAvailabilityRanges,
+  useRoomTypes,
+  useRoomUnits,
+} from '../../hooks/useQueries';
 import type { GalleryItem, Hotel, RoomGroup, RoomTypeInventory, RoomUnit } from '../../types';
 
 const SECTIONS: Array<{
@@ -53,6 +68,29 @@ function formatPrice(price: number | null) {
   return `Bs. ${price.toLocaleString('es-BO', { maximumFractionDigits: 0 })}`;
 }
 
+/** Mismo rótulo con el que se guarda la unidad en `reservas.room_type`. */
+function roomUnitLabel(type: RoomTypeInventory, unit: RoomUnit) {
+  const prefix = type.grupo === 'departamento' ? 'Departamento' : 'Habitación';
+  return `${prefix} ${unitNumber(unit.name)}`.trim();
+}
+
+function isoDaysFromNow(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDay(value: string): string {
+  const [year, month, day] = value.split('-');
+  return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+/** «2026-10-23 → 2026-10-27»: las fechas en que la unidad ya está tomada. */
+function rangeLabel(range: { check_in: string; check_out: string }, onlyUpcoming = false) {
+  const from = onlyUpcoming && range.check_in ? formatDay(range.check_in) : null;
+  return from ? `Ocupada desde el ${from}` : `${formatDay(range.check_in)} → ${formatDay(range.check_out)}`;
+}
+
 function capacityLabel(type: RoomTypeInventory) {
   const min = type.min_capacity;
   const max = type.max_capacity;
@@ -70,14 +108,27 @@ interface UnitCardProps {
   unit: RoomUnit;
   singular: string;
   showNumber: boolean;
+  /** Fechas en que esta unidad ya está tomada (pendiente o confirmada). */
+  occupied: Array<{ check_in: string; check_out: string }>;
+  price: number | null;
+  onReserve: () => void;
 }
 
-function UnitCard({ unit, singular, showNumber }: UnitCardProps) {
+function UnitCard({ unit, singular, showNumber, occupied, price, onReserve }: UnitCardProps) {
   const number = unitNumber(unit.name);
+  const busy = occupied.length > 0;
+  const nextRange = occupied[0] ?? null;
+
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div
+      className={`flex h-full flex-col rounded-2xl border p-4 transition-colors ${
+        busy
+          ? 'border-gray-100 bg-gray-50/70'
+          : 'border-gray-100 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
+      }`}
+    >
       <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-semibold text-gray-900">
+        <p className={`text-sm font-semibold ${busy ? 'text-gray-600' : 'text-gray-900'}`}>
           {showNumber && number ? `${singular} ${number}` : singular}
         </p>
         {unit.floor ? (
@@ -105,6 +156,41 @@ function UnitCard({ unit, singular, showNumber }: UnitCardProps) {
           ))}
         </div>
       ) : null}
+
+      {/*
+       * Ocupación real de estas fechas: las pendientes también bloquean la
+       * unidad, igual que en el formulario de reserva. Se muestran las fechas
+       * tomadas, nunca quién las reservó.
+       */}
+      {busy ? (
+        <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-800">
+          <CalendarDays className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={1.8} />
+          <span>
+            {nextRange ? rangeLabel(nextRange) : 'Ocupada'}
+            {occupied.length > 1 ? ` · ${occupied.length} estadías` : ''}
+          </span>
+        </p>
+      ) : null}
+
+      <div className="mt-auto pt-4">
+        {busy ? (
+          <button
+            type="button"
+            disabled
+            className="w-full cursor-not-allowed rounded-lg border border-gray-200 bg-gray-100 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-400"
+          >
+            No disponible
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onReserve}
+            className="w-full rounded-lg bg-gray-900 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white transition-colors hover:bg-gray-800"
+          >
+            Reservar{price ? ` · Bs. ${price.toLocaleString('es-BO', { maximumFractionDigits: 0 })}` : ''}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -116,11 +202,23 @@ interface TypeCardProps {
   showNumbers: boolean;
   isOpen: boolean;
   onToggle: () => void;
+  occupiedByUnit: (unit: RoomUnit) => Array<{ check_in: string; check_out: string }>;
+  onReserve: (unit: RoomUnit) => void;
 }
 
-function TypeCard({ type, units, singular, showNumbers, isOpen, onToggle }: TypeCardProps) {
+function TypeCard({
+  type,
+  units,
+  singular,
+  showNumbers,
+  isOpen,
+  onToggle,
+  occupiedByUnit,
+  onReserve,
+}: TypeCardProps) {
   const price = formatPrice(type.price);
   const capacity = capacityLabel(type);
+  const freeCount = units.filter((unit) => occupiedByUnit(unit).length === 0).length;
   const features = useMemo(() => {
     const counts = new Map<string, number>();
     units.forEach((unit) =>
@@ -149,7 +247,7 @@ function TypeCard({ type, units, singular, showNumbers, isOpen, onToggle }: Type
         onClick={onToggle}
         aria-expanded={isOpen}
         aria-controls={`tipo-${type.id}`}
-        className="grid w-full text-left md:grid-cols-[260px_1fr_auto]"
+        className="grid w-full text-left md:grid-cols-[220px_1fr_auto]"
       >
         <div className="relative h-48 overflow-hidden bg-gray-100 md:h-full md:min-h-[190px]">
           {type.image_url ? (
@@ -230,15 +328,29 @@ function TypeCard({ type, units, singular, showNumbers, isOpen, onToggle }: Type
             <div className="border-t border-gray-100 bg-gray-50/70 px-4 py-5 sm:px-6">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-[10px] font-medium uppercase tracking-[0.25em] text-gray-500">
-                  {showNumbers ? 'Unidades disponibles' : 'Unidades'}
+                  {showNumbers ? 'Unidades' : 'Unidades'}
                 </p>
+                {/*
+                 * «3 de 9 libres» dice lo mismo que «6 ocupadas» sin que nadie
+                 * tenga que restar, y evita prometer disponibilidad que no hay.
+                 */}
                 <span className="text-[10px] text-gray-400">
-                  {units.length} en total
+                  {freeCount === units.length
+                    ? `${units.length} en total`
+                    : `${freeCount} de ${units.length} libres`}
                 </span>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {units.map((unit) => (
-                  <UnitCard key={unit.id} unit={unit} singular={singular} showNumber={showNumbers} />
+                  <UnitCard
+                    key={unit.id}
+                    unit={unit}
+                    singular={singular}
+                    showNumber={showNumbers}
+                    occupied={occupiedByUnit(unit)}
+                    price={type.price ?? null}
+                    onReserve={() => onReserve(unit)}
+                  />
                 ))}
               </div>
             </div>
@@ -246,6 +358,289 @@ function TypeCard({ type, units, singular, showNumbers, isOpen, onToggle }: Type
         ) : null}
       </AnimatePresence>
     </motion.article>
+  );
+}
+
+interface GalleryReservationProps {
+  hotelId: string;
+  type: RoomTypeInventory;
+  unit: RoomUnit;
+  onClose: () => void;
+}
+
+/**
+ * Reserva de una unidad concreta desde la galería.
+ *
+ * Manda al MISMO endpoint que el formulario de la home
+ * (`POST /api/public/reservation`), así que la solicitud bloquea la unidad y
+ * genera el aviso de recepción en RelaxPMS por el camino de siempre.
+ */
+function GalleryReservation({ hotelId, type, unit, onClose }: GalleryReservationProps) {
+  const queryClient = useQueryClient();
+  const { isAuthenticated, user } = useAuthStore();
+  const isClient = isAuthenticated && user?.role === 'client';
+  const { data: countries = [] } = useCountryCodes();
+
+  const [checkIn, setCheckIn] = useState(isoDaysFromNow(1));
+  const [checkOut, setCheckOut] = useState(isoDaysFromNow(3));
+  const [name, setName] = useState('');
+  const [countryIso, setCountryIso] = useState('');
+  const [countryDial, setCountryDial] = useState('');
+  const [phone, setPhone] = useState('');
+  const [adults, setAdults] = useState(2);
+  const [children, setChildren] = useState(0);
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [sent, setSent] = useState(false);
+  const phoneTouched = useRef(false);
+
+  // País por defecto: Bolivia, o el primero configurado por el hotel.
+  useEffect(() => {
+    if (countryDial || countries.length === 0) return;
+    const fallback = countries.find((country) => country.iso === 'BO') || countries[0];
+    setCountryIso(fallback.iso);
+    setCountryDial(fallback.dial);
+  }, [countries, countryDial]);
+
+  // Con sesión de cliente se completa nombre y teléfono; la solicitud queda
+  // vinculada a la cuenta, igual que en la home.
+  useEffect(() => {
+    if (!isClient) return;
+    let active = true;
+    clientApi.me().then((result) => {
+      if (!active || result.error) return;
+      const client = (
+        result.data as {
+          client?: {
+            name?: string;
+            phone?: string | null;
+            country_iso?: string | null;
+            country_dial?: string | null;
+          };
+        } | null
+      )?.client;
+      if (!client) return;
+      setName((current) => current || client.name || '');
+      if (phoneTouched.current) return;
+      const matched = countries.find(
+        (country) =>
+          (client.country_iso && country.iso === client.country_iso) ||
+          (client.country_dial && country.dial === client.country_dial)
+      );
+      const dial = client.country_dial || matched?.dial || countryDial;
+      const digits = (client.phone || '').replace(/\D/g, '');
+      const dialDigits = (dial || '').replace(/\D/g, '');
+      if (dial) setCountryDial(dial);
+      setCountryIso(client.country_iso || matched?.iso || countryIso);
+      setPhone(dialDigits && digits.startsWith(dialDigits) ? digits.slice(dialDigits.length) : digits);
+    });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClient, countries.length]);
+
+  const unitLabel = roomUnitLabel(type, unit);
+
+  const submit = useCallback(
+    async (event: React.FormEvent) => {
+      event.preventDefault();
+      if (!hotelId) {
+        toast.error('El hotel todavía no está configurado');
+        return;
+      }
+      if (checkOut <= checkIn) {
+        toast.error('La fecha de salida debe ser posterior a la de ingreso');
+        return;
+      }
+      if (phone.replace(/\D/g, '').length < 6) {
+        toast.error('Ingresá un número de celular válido');
+        return;
+      }
+      setSubmitting(true);
+      const { error } = await bookingApi.create({
+        hotel_id: hotelId,
+        guest_name: name.trim(),
+        guest_phone: `${countryDial} ${phone}`.trim(),
+        check_in: checkIn,
+        check_out: checkOut,
+        adults,
+        children_count: children,
+        room_type: type.name,
+        room_unit: unitLabel,
+        message: message.trim(),
+      });
+      setSubmitting(false);
+      if (error) {
+        toast.error(error);
+        // Otra persona pudo tomarla mientras el formulario estaba abierto.
+        queryClient.invalidateQueries({ queryKey: ['roomAvailability'] });
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['roomAvailability'] });
+      toast.success('Solicitud enviada. El hotel se va a contactar con vos.');
+      setSent(true);
+    },
+    [
+      hotelId, checkIn, checkOut, name, countryDial, phone, adults, children, message,
+      type.name, unitLabel, queryClient,
+    ]
+  );
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6">
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Reservar ${unitLabel}`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-[0.25em] text-gray-400">Reservar</p>
+            <h3 className="mt-1 font-serif text-2xl text-gray-900">{type.name}</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              {unitLabel}{unit.floor ? ` · ${unit.floor}` : ''}
+              {type.price ? ` · Bs. ${type.price.toLocaleString('es-BO', { maximumFractionDigits: 0 })} por noche` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {sent ? (
+          <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-5">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-green-700">Solicitud recibida</p>
+            <p className="mt-2 text-sm text-gray-700">
+              Guardamos tu pedido para {unitLabel} del {formatDay(checkIn)} al {formatDay(checkOut)}.
+              El hotel va a confirmar la disponibilidad y la unidad queda bloqueada mientras tanto.
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-4 w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-semibold uppercase tracking-wider text-white hover:bg-gray-800"
+            >
+              Cerrar
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="mt-6 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm text-gray-700">
+                <span className="mb-2 block font-medium">Fecha ingreso *</span>
+                <input
+                  type="date"
+                  required
+                  value={checkIn}
+                  min={isoDaysFromNow(0)}
+                  onChange={(event) => setCheckIn(event.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-gray-900 focus:border-gray-900 focus:outline-none"
+                />
+              </label>
+              <label className="text-sm text-gray-700">
+                <span className="mb-2 block font-medium">Fecha salida *</span>
+                <input
+                  type="date"
+                  required
+                  value={checkOut}
+                  min={checkIn || isoDaysFromNow(0)}
+                  onChange={(event) => setCheckOut(event.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-gray-900 focus:border-gray-900 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <label className="block text-sm text-gray-700">
+              <span className="mb-2 block font-medium">Nombre completo *</span>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Tu nombre"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-gray-900 focus:border-gray-900 focus:outline-none"
+              />
+            </label>
+
+            <div className="text-sm text-gray-700">
+              <span className="mb-2 block font-medium">Teléfono *</span>
+              <CountryPhoneInput
+                countries={countries}
+                iso={countryIso}
+                dial={countryDial}
+                phone={phone}
+                onCountryChange={(country) => {
+                  setCountryIso(country.iso);
+                  setCountryDial(country.dial);
+                }}
+                onPhoneChange={(value) => {
+                  phoneTouched.current = true;
+                  setPhone(value);
+                }}
+                placeholder="Número de celular"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="text-sm text-gray-700">
+                <span className="mb-2 block font-medium">Adultos</span>
+                <select
+                  value={adults}
+                  onChange={(event) => setAdults(Number(event.target.value))}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-gray-900 focus:border-gray-900 focus:outline-none"
+                >
+                  {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm text-gray-700">
+                <span className="mb-2 block font-medium">Niños</span>
+                <select
+                  value={children}
+                  onChange={(event) => setChildren(Number(event.target.value))}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-gray-900 focus:border-gray-900 focus:outline-none"
+                >
+                  {Array.from({ length: 7 }, (_, i) => i).map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="block text-sm text-gray-700">
+              <span className="mb-2 block font-medium">Mensaje</span>
+              <textarea
+                rows={2}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Solicitudes especiales..."
+                className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-gray-900 focus:border-gray-900 focus:outline-none"
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-lg bg-gray-900 px-4 py-3 text-sm font-semibold uppercase tracking-wider text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? 'Enviando...' : 'Enviar solicitud'}
+            </button>
+            <p className="text-center text-xs text-gray-400">
+              La habitación queda bloqueada apenas se envía la solicitud, hasta que el hotel la confirme o la cancele.
+            </p>
+          </form>
+        )}
+      </motion.div>
+    </div>
   );
 }
 
@@ -272,7 +667,26 @@ export default function GalleryPage() {
     'Conoce nuestras habitaciones y departamentos. Elegí un tipo para ver sus unidades disponibles.'
   );
   const [openTypeId, setOpenTypeId] = useState<string | null>(null);
+  const [reserving, setReserving] = useState<{ typeId: string; unitId: string } | null>(null);
   const isLoading = typesLoading || unitsLoading;
+
+  /*
+   * Ocupación de TODAS las unidades en una ventana amplia (hoy → +90 días).
+   * La galería no pregunta fechas antes de reservar, así que muestra la unidad
+   * como ocupada si tiene cualquier estadía en ese rango, con las fechas
+   * tomadas a la vista. Al reservar se elige el rango exacto, y el servidor
+   * vuelve a rechazar cualquier choque de fechas.
+   */
+  const today = new Date().toISOString().slice(0, 10);
+  const horizon = isoDaysFromNow(90);
+  const { data: availability } = useRoomAvailabilityRanges(hotelId, today, horizon);
+  const ranges = availability?.ranges ?? [];
+
+  const occupiedByUnit = useCallback(
+    (type: RoomTypeInventory, unit: RoomUnit) =>
+      ranges.filter((range) => range.room_type === `${type.name} · ${roomUnitLabel(type, unit)}`),
+    [ranges]
+  );
 
   const unitsByType = useMemo(() => {
     const map = new Map<string, RoomUnit[]>();
@@ -282,6 +696,13 @@ export default function GalleryPage() {
     });
     return map;
   }, [units]);
+
+  const reservingType = reserving
+    ? types.find((type) => type.id === reserving.typeId) ?? null
+    : null;
+  const reservingUnit = reservingType
+    ? (unitsByType.get(reservingType.id) || []).find((unit) => unit.id === reserving?.unitId) ?? null
+    : null;
 
   const sections = useMemo(
     () =>
@@ -344,7 +765,8 @@ export default function GalleryPage() {
                     </span>
                   </motion.div>
 
-                  <div className="space-y-4">
+                  {/* Dos tipos por fila en escritorio; en pantallas angostas se apilan. */}
+                  <div className="grid items-start gap-4 xl:grid-cols-2">
                     {section.types.map((type) => (
                       <TypeCard
                         key={type.id}
@@ -354,6 +776,8 @@ export default function GalleryPage() {
                         showNumbers={showNumbers}
                         isOpen={openTypeId === type.id}
                         onToggle={() => setOpenTypeId(openTypeId === type.id ? null : type.id)}
+                        occupiedByUnit={(unit) => occupiedByUnit(type, unit)}
+                        onReserve={(unit) => setReserving({ typeId: type.id, unitId: unit.id })}
                       />
                     ))}
                   </div>
@@ -399,6 +823,15 @@ export default function GalleryPage() {
           </section>
         ) : null}
       </div>
+
+      {reservingType && reservingUnit ? (
+        <GalleryReservation
+          hotelId={hotelId}
+          type={reservingType}
+          unit={reservingUnit}
+          onClose={() => setReserving(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -150,6 +150,46 @@ async function adminWrite<T>(payload: {
   }
 }
 
+/**
+ * Lectura con la service role key a través del backend.
+ *
+ * Las políticas RLS de Supabase esconden las filas inactivas a cualquier token
+ * del navegador, incluso al del personal. El panel necesita verlas para poder
+ * publicarlas de nuevo, así que las lecturas que piden `includeInactive` pasan
+ * por `/api/admin/db`, que valida la sesión y el rol.
+ */
+async function adminSelectRows<T>(
+  table: string,
+  options?: { filters?: Record<string, unknown>; order?: { column: string; ascending?: boolean }; limit?: number }
+): Promise<{ data: T[] | null; error: string | null }> {
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}api/admin/db`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        table,
+        action: 'select',
+        filters: options?.filters,
+        order: options?.order,
+        limit: options?.limit,
+      }),
+    });
+
+    const body = (await response.json().catch(() => null)) as
+      | { data?: T[] | null; error?: string | null }
+      | null;
+
+    if (!response.ok) {
+      return { data: null, error: body?.error || `HTTP ${response.status}` };
+    }
+
+    return { data: body?.data ?? [], error: body?.error ?? null };
+  } catch {
+    return { data: null, error: 'No se pudo conectar con el servidor de administración' };
+  }
+}
+
 // Generic CRUD operations
 
 /**
@@ -181,6 +221,9 @@ async function selectRows<T>(
 export const db = {
   // Select with filters
   select: selectRows,
+
+  // Select incluyendo filas inactivas (solo personal del hotel)
+  selectAdmin: adminSelectRows,
 
   // Insert
   async insert<T>(

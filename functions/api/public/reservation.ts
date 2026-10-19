@@ -1,5 +1,6 @@
 import { json, readSession, type Env } from '../../_lib/env';
 import { serviceRequest } from '../../_lib/supabase';
+import { isPmsRoomOccupied } from '../../_lib/pmsOccupancy';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -121,6 +122,19 @@ export async function handlePublicReservation(
     if (overlapping.data && overlapping.data.length > 0) {
       return json(
         { error: 'Esa habitación ya está reservada en esas fechas. Elegí otra.' },
+        409
+      );
+    }
+
+    /*
+     * El formulario deshabilita lo que el PMS tiene ocupado, pero el chequeo
+     * tiene que existir también acá: alguien puede enviar el POST sin pasar por
+     * la pantalla. Si el PMS no responde no se bloquea la solicitud.
+     */
+    const occupiedNow = await isPmsRoomOccupied(env, hotelId, roomLabel, checkIn, checkOut);
+    if (occupiedNow) {
+      return json(
+        { error: 'Esa habitación está ocupada en el hotel en esas fechas. Elegí otra.' },
         409
       );
     }

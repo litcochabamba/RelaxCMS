@@ -167,10 +167,14 @@ export function useRoomTypes(hotelId: string, includeInactive = false) {
   return useQuery({
     queryKey: ['roomTypes', hotelId, includeInactive],
     queryFn: async () => {
-      const { data, error } = await db.select<RoomTypeInventory>('tipos_habitacion', {
+      const params = {
         filters: includeInactive ? { hotel_id: hotelId } : { hotel_id: hotelId, active: true },
         order: { column: 'order', ascending: true },
-      });
+      };
+      // RLS oculta las filas inactivas al navegador: el panel las lee del servidor.
+      const { data, error } = includeInactive
+        ? await db.selectAdmin<RoomTypeInventory>('tipos_habitacion', params)
+        : await db.select<RoomTypeInventory>('tipos_habitacion', params);
       if (error) throw new Error(error);
       return data || [];
     },
@@ -182,10 +186,13 @@ export function useRoomUnits(hotelId: string, includeInactive = false) {
   return useQuery({
     queryKey: ['roomUnits', hotelId, includeInactive],
     queryFn: async () => {
-      const { data, error } = await db.select<RoomUnit>('unidades_habitacion', {
+      const params = {
         filters: includeInactive ? { hotel_id: hotelId } : { hotel_id: hotelId, active: true },
         order: { column: 'order', ascending: true },
-      });
+      };
+      const { data, error } = includeInactive
+        ? await db.selectAdmin<RoomUnit>('unidades_habitacion', params)
+        : await db.select<RoomUnit>('unidades_habitacion', params);
       if (error) throw new Error(error);
       return data || [];
     },
@@ -212,6 +219,50 @@ export function useRoomAvailability(hotelId: string, checkIn: string, checkOut: 
         throw new Error(body?.error || 'No se pudo consultar la disponibilidad');
       }
       return body?.data?.rooms ?? [];
+    },
+    enabled: !!hotelId && !!checkIn && !!checkOut && checkOut > checkIn,
+    staleTime: 30 * 1000,
+  });
+}
+
+/**
+ * Lo mismo que `useRoomAvailability`, con las fechas de cada estadía.
+ *
+ * La galería necesita saber CUÁNDO está ocupada una unidad para poder pintarla
+ * como ocupada y ofrecer el botón de reserva solo para las libres. Comparte la
+ * clave de caché con la versión simple para que reservar invalide las dos.
+ */
+export interface OccupiedRange {
+  room_type: string;
+  check_in: string;
+  check_out: string;
+}
+
+export function useRoomAvailabilityRanges(
+  hotelId: string,
+  checkIn: string,
+  checkOut: string
+) {
+  return useQuery({
+    queryKey: ['roomAvailability', hotelId, checkIn, checkOut],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        hotel_id: hotelId,
+        check_in: checkIn,
+        check_out: checkOut,
+        detail: '1',
+      });
+      const response = await fetch(`${import.meta.env.BASE_URL}api/public/availability?${params}`);
+      const body = (await response.json().catch(() => null)) as
+        | { data?: { rooms?: string[] | null; ranges?: OccupiedRange[] | null } | null; error?: string | null }
+        | null;
+      if (!response.ok) {
+        throw new Error(body?.error || 'No se pudo consultar la disponibilidad');
+      }
+      return {
+        rooms: body?.data?.rooms ?? [],
+        ranges: body?.data?.ranges ?? [],
+      };
     },
     enabled: !!hotelId && !!checkIn && !!checkOut && checkOut > checkIn,
     staleTime: 30 * 1000,

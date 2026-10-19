@@ -254,58 +254,83 @@ export default function Navbar() {
             )}
           </div>
         </div>
-      </motion.nav>
-
-      {/* Mobile menu */}
+      </motion.nav>      {/*
+       * Menú móvil: panel desplegable anclado bajo el navbar. Antes era una
+       * capa a pantalla completa que tapaba la página entera; así el visitante
+       * mantiene el contexto de lo que estaba viendo.
+       */}
       <AnimatePresence>
         {!showDesktopNav && mobileOpen && (
-          <motion.div
-            initial={{ opacity: 0, x: '100%' }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: '100%' }}
-            transition={{ type: 'tween', duration: 0.3 }}
-            className="fixed inset-0 z-40 bg-gray-900/95 backdrop-blur-lg"
-          >
-            <div className="flex flex-col items-center justify-center h-full gap-8">
-              {navLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  to={link.href}
-                  className="text-2xl font-serif text-white hover:text-white/80 transition-colors"
-                >
-                  {link.label}
-                </Link>
-              ))}
-              <div className="w-16 h-px bg-white/20 my-4" />
-              {isAuthenticated ? (
-                <>
-                  {accountLink && (
-                    <Link to={accountLink.to} className="text-xl text-white/80 hover:text-white">
-                      {accountLink.label}
-                    </Link>
-                  )}
-                  {isStaff && (
+          <>
+            {/* Capa invisible: cierra el panel al tocar fuera, sin oscurecer. */}
+            <button
+              type="button"
+              aria-label="Cerrar menú"
+              onClick={closeMenus}
+              className="fixed inset-0 z-40 cursor-default"
+              tabIndex={-1}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.98 }}
+              transition={{ type: 'tween', duration: 0.2, ease: 'easeOut' }}
+              className="fixed right-4 top-[5.25rem] z-50 w-[min(18rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl shadow-black/15"
+            >
+              <nav className="flex flex-col">
+                {navLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    to={link.href}
+                    className="rounded-xl px-3 py-2.5 text-sm font-medium tracking-wider uppercase text-gray-800 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
+
+              <div className="my-1.5 h-px bg-gray-100" />
+
+              <div className="flex flex-col">
+                {isAuthenticated ? (
+                  <>
+                    {accountLink && (
+                      <Link
+                        to={accountLink.to}
+                        className="rounded-xl px-3 py-2.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                      >
+                        {accountLink.label}
+                      </Link>
+                    )}
+                    {isStaff && (
+                      <button
+                        onClick={() => {
+                          closeMenus();
+                          toggle();
+                        }}
+                        className="rounded-xl px-3 py-2.5 text-left text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                      >
+                        CMS
+                      </button>
+                    )}
                     <button
-                      onClick={() => {
-                        closeMenus();
-                        toggle();
-                      }}
-                      className="text-xl text-white/80 hover:text-white"
+                      onClick={handleLogout}
+                      className="rounded-xl px-3 py-2.5 text-left text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
                     >
-                      CMS
+                      Cerrar Sesión
                     </button>
-                  )}
-                  <button onClick={handleLogout} className="text-xl text-white/80 hover:text-white">
-                    Cerrar Sesión
-                  </button>
-                </>
-              ) : (
-                <Link to="/auth/login" className="text-xl text-white/80 hover:text-white">
-                  Ingreso / Registro
-                </Link>
-              )}
-            </div>
-          </motion.div>
+                  </>
+                ) : (
+                  <Link
+                    to="/auth/login"
+                    className="rounded-xl px-3 py-2.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+                  >
+                    Ingreso / Registro
+                  </Link>
+                )}
+              </div>
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
     </>

@@ -14,6 +14,10 @@ export interface Env {
   INTEGRATIONS_API_KEY?: string;
   /** Hotel cuyas reservas expone la integración. */
   INTEGRATIONS_HOTEL_ID?: string;
+  /** Origen de RelaxPMS, sin barra final. Sin esto no se consultan las ocupadas. */
+  RELAXPMS_API_URL?: string;
+  /** Clave para consultar RelaxPMS; si falta se usa INTEGRATIONS_API_KEY. */
+  RELAXPMS_API_KEY?: string;
 }
 
 /** Variables sin las cuales no se puede autenticar ni leer datos del panel. */

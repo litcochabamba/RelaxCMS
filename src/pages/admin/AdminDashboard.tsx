@@ -13,14 +13,14 @@ import {
   useAmenities, useGallery,
   useAttractionsWithImages, useAllComments, useUsers, useCreateGalleryItem, useDeleteGalleryItem,
   useSetCommentStatus, useDeleteComment, useDashboardStats,
-  useReservations, useRoomTypes, useRoomUnits, useSetReservationStatus,
+  useReservations, useRoomTypes, useRoomUnits, useSetReservationStatus, useUpdateRoomType,
   useAdminPromotions, useCreatePromotion, useUpdatePromotion, useDeletePromotion
 } from '../../hooks/useQueries';
 import type { ClientAccount, Hotel, Promotion, RoomTypeInventory, RoomUnit } from '../../types';
 import { 
   Building2, Bed, Tag, Star, Image, MapPin, 
   Mail, Users, XCircle, Plus, Edit, Trash2, Eye, 
-  ChevronDown, ExternalLink, Loader2, AlertCircle, Settings, Phone, Check
+  ChevronDown, ExternalLink, Loader2, AlertCircle, Settings, Phone, Check, RefreshCw, X
 } from 'lucide-react';
 
 const menuItems = [
@@ -309,8 +309,27 @@ function RoomsSection() {
   const { data: hotels } = useHotels();
   const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
   const hotelId = hotel?.id || '';
-  const { data: typesData, isLoading, error } = useRoomTypes(hotelId);
+  // El inventario incluye tipos ocultos y tipos sin unidades: si se filtraran,
+  // el PMS podría tener 20 tipos y esta pantalla mostrar solo 15 sin explicar
+  // por qué. La galería sí los oculta, pero acá se administran todos.
+  const { data: typesData, isLoading, error } = useRoomTypes(hotelId, true);
   const { data: unitsData } = useRoomUnits(hotelId);
+  const queryClient = useQueryClient();
+  const updateType = useUpdateRoomType();
+  const [importOpen, setImportOpen] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const toggleActive = async (type: RoomTypeInventory) => {
+    setTogglingId(type.id);
+    try {
+      await updateType.mutateAsync({ id: type.id, data: { active: !type.active } });
+      toast.success(type.active ? `«${type.name}» oculto` : `«${type.name}» publicado`);
+    } catch {
+      toast.error('No se pudo actualizar el tipo');
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   const types = (Array.isArray(typesData) ? typesData : []) as RoomTypeInventory[];
   const units = (Array.isArray(unitsData) ? unitsData : []) as RoomUnit[];
@@ -325,7 +344,7 @@ function RoomsSection() {
   const rows = groups
     .map((group) => ({
       group,
-      types: types.filter((type) => type.grupo === group.id && (countByType.get(type.id) || 0) > 0),
+      types: types.filter((type) => type.grupo === group.id),
     }))
     .filter((entry) => entry.types.length > 0);
 
@@ -359,9 +378,20 @@ function RoomsSection() {
           <h2 className="text-2xl font-serif text-gray-900">Tipos de habitación</h2>
           <p className="text-gray-500">Cada tipo con sus unidades reales, capacidad y tarifa.</p>
         </div>
-        <span className="rounded-full bg-white border border-gray-200 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-gray-500">
-          {totalUnits} unidades · {totalRooms} habitaciones · {totalDepartments} departamentos
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-white border border-gray-200 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.15em] text-gray-500">
+            {types.length} tipos · {totalUnits} unidades · {totalRooms} habitaciones ·{' '}
+            {totalDepartments} departamentos
+          </span>
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            disabled={!hotelId}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-400 hover:text-gray-900 disabled:opacity-50"
+          >
+            <RefreshCw className="h-4 w-4" /> Importar desde RelaxPMS
+          </button>
+        </div>
       </div>
 
       {rows.length === 0 ? (
@@ -416,19 +446,38 @@ function RoomsSection() {
                               <span className="text-sm font-medium text-gray-900">{type.name}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-3 text-sm text-gray-700">{countByType.get(type.id) || 0}</td>
+                          <td className="px-6 py-3 text-sm text-gray-700">
+                            <span className="block">{countByType.get(type.id) || 0}</span>
+                            {(countByType.get(type.id) || 0) === 0 ? (
+                              <span className="block text-[11px] text-amber-700">sin habitaciones</span>
+                            ) : null}
+                          </td>
                           <td className="px-6 py-3 text-sm text-gray-700">{capacity}</td>
                           <td className="px-6 py-3 text-sm text-gray-700">
                             {type.price ? `Bs. ${type.price.toLocaleString('es-BO')}` : 'Consultar'}
                           </td>
                           <td className="px-6 py-3">
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs ${
-                                type.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                              }`}
-                            >
-                              {type.active ? 'Activo' : 'Inactivo'}
-                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`px-2 py-1 rounded-full text-xs ${
+                                  type.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                                }`}
+                              >
+                                {type.active ? 'Activo' : 'Oculto'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void toggleActive(type)}
+                                disabled={togglingId === type.id}
+                                className="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline disabled:opacity-50"
+                              >
+                                {togglingId === type.id
+                                  ? 'Guardando...'
+                                  : type.active
+                                    ? 'Ocultar'
+                                    : 'Publicar'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -440,6 +489,304 @@ function RoomsSection() {
           );
         })
       )}
+
+      {importOpen ? (
+        <PmsImportDialog
+          hotelId={hotelId}
+          onClose={() => setImportOpen(false)}
+          onApplied={() => {
+            queryClient.invalidateQueries({ queryKey: ['roomTypes'] });
+            queryClient.invalidateQueries({ queryKey: ['roomUnits'] });
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+interface PmsImportPreview {
+  pms: {
+    types: number;
+    rooms: number;
+    types_with_rooms?: number;
+    types_without_rooms?: number;
+  };
+  types: {
+    create: Array<{ pms_id: number; name: string; grupo: string; units: number; empty: boolean }>;
+    rename: Array<{ pms_id: number; from: string; to: string }>;
+    unchanged: number;
+  };
+  units: {
+    create: Array<{ pms_id: number; name: string; type_name: string }>;
+    update: Array<{ pms_id: number; name: string; to: { name: string }; changes: string[] }>;
+    unchanged: number;
+    skipped: Array<{ pms_id: number; name: string; reason: string }>;
+  };
+  missing: { types: Array<{ pms_id: number; name: string }>; units: Array<{ pms_id: number; name: string }> };
+}
+
+/**
+ * Vista previa de la importación del catálogo del PMS.
+ *
+ * Muestra exactamente lo que va a cambiar y aplica el mismo plan que calculó
+ * el servidor. No borra nada: lo que ya no está en el PMS se informa aparte.
+ */
+function PmsImportDialog({
+  hotelId,
+  onClose,
+  onApplied,
+}: {
+  hotelId: string;
+  onClose: () => void;
+  onApplied: () => void;
+}) {
+  const [preview, setPreview] = useState<PmsImportPreview | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [overwriteNames, setOverwriteNames] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await fetch(
+        `${import.meta.env.BASE_URL}api/admin/pms-import?hotel_id=${encodeURIComponent(hotelId)}`
+      );
+      const body = (await response.json().catch(() => null)) as
+        | { data?: PmsImportPreview | null; error?: string | null }
+        | null;
+      if (!response.ok) throw new Error(body?.error || 'No se pudo leer el catálogo del PMS');
+      setPreview(body?.data ?? null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo leer el catálogo del PMS');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // Solo al abrir: recargar es explícito con el botón Reintentar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const apply = async () => {
+    setApplying(true);
+    setError('');
+    try {
+      const response = await fetch(`${import.meta.env.BASE_URL}api/admin/pms-import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hotel_id: hotelId, overwrite_names: overwriteNames }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | {
+            data?: {
+              created_types: number;
+              updated_types: number;
+              created_units: number;
+              updated_units: number;
+              errors: string[];
+            } | null;
+            error?: string | null;
+          }
+        | null;
+      if (!response.ok) throw new Error(body?.error || 'No se pudo aplicar la importación');
+
+      const data = body?.data;
+      if (data?.errors?.length) {
+        toast.error(data.errors[0]);
+      } else {
+        toast.success(
+          `Importado: ${data?.created_types ?? 0} tipos y ${data?.created_units ?? 0} unidades nuevos`
+        );
+      }
+      onApplied();
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo aplicar la importación');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const newTypes = preview?.types.create ?? [];
+  const renames = preview?.types.rename ?? [];
+  const newUnits = preview?.units.create ?? [];
+  const updatedUnits = preview?.units.update ?? [];
+  const skipped = preview?.units.skipped ?? [];
+  const missingTypes = preview?.missing.types ?? [];
+  const missingUnits = preview?.missing.units ?? [];
+  const structuralChanges = newTypes.length + newUnits.length + updatedUnits.length;
+  const nothingToDo = structuralChanges === 0 && renames.length === 0;
+  const canApply = structuralChanges > 0 || (overwriteNames && renames.length > 0);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-4">
+          <div>
+            <h3 className="font-serif text-xl text-gray-900">Importar desde RelaxPMS</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Trae los tipos y habitaciones creados en el PMS. No borra nada y conserva fotos, precios,
+              descripciones y amenidades del CMS.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            aria-label="Cerrar"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {loading ? (
+            <div className="flex items-center justify-center py-10 text-sm text-gray-500">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Consultando el PMS...
+            </div>
+          ) : error ? (
+            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+              <p className="text-sm text-red-700">{error}</p>
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+              >
+                <RefreshCw className="h-4 w-4" /> Reintentar
+              </button>
+            </div>
+          ) : preview ? (
+            <div className="space-y-5">
+              <p className="text-xs uppercase tracking-wider text-gray-400">
+                El PMS tiene {preview.pms.types} tipos y {preview.pms.rooms} habitaciones
+                {preview.pms.types_without_rooms
+                  ? ` · ${preview.pms.types_without_rooms} sin habitaciones`
+                  : ''}
+              </p>
+
+              {preview.pms.types_without_rooms ? (
+                <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
+                  Los tipos sin habitaciones se importan igual, pero no se publican en la galería
+                  hasta que el PMS les asigne al menos una unidad.
+                </p>
+              ) : null}
+
+              {nothingToDo ? (
+                <div className="rounded-xl border border-green-100 bg-green-50 p-4 text-sm text-green-800">
+                  Todo al día: no hay tipos ni habitaciones nuevas para importar.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {structuralChanges === 0 ? (
+                    <p className="text-xs text-gray-500">
+                      No hay altas ni cambios de unidades. Solo quedan nombres de tipos distintos.
+                    </p>
+                  ) : null}
+                  {newTypes.length > 0 ? (
+                    <div className="rounded-xl border border-gray-200 p-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        {newTypes.length} tipo(s) nuevo(s)
+                      </p>
+                      <ul className="mt-2 space-y-1 text-xs text-gray-600">
+                        {newTypes.slice(0, 8).map((type) => (
+                          <li key={type.pms_id}>
+                            {type.name}{' '}
+                            <span className="text-gray-400">
+                              · {type.grupo === 'departamento' ? 'Departamento' : 'Habitación'} ·{' '}
+                              {type.units} unidad(es){type.empty ? ' · sin habitaciones en el PMS' : ''}
+                            </span>
+                          </li>
+                        ))}
+                        {newTypes.length > 8 ? (
+                          <li className="text-gray-400">y {newTypes.length - 8} más…</li>
+                        ) : null}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  {newUnits.length > 0 ? (
+                    <div className="rounded-xl border border-gray-200 p-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        {newUnits.length} unidad(es) nueva(s)
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600">
+                        {newUnits.slice(0, 10).map((unit) => `${unit.name} (${unit.type_name})`).join(', ')}
+                        {newUnits.length > 10 ? ` y ${newUnits.length - 10} más` : ''}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {updatedUnits.length > 0 ? (
+                    <div className="rounded-xl border border-gray-200 p-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        {updatedUnits.length} unidad(es) con cambios
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Se actualizan {[...new Set(updatedUnits.flatMap((unit) => unit.changes))].join(', ')}.
+                        Los nombres de tipo no se tocan salvo que lo pidas abajo.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {renames.length > 0 ? (
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <input
+                        type="checkbox"
+                        checked={overwriteNames}
+                        onChange={(event) => setOverwriteNames(event.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-gray-900"
+                      />
+                      <span className="text-xs leading-relaxed text-amber-900">
+                        <span className="block text-sm font-medium">
+                          Actualizar también los nombres de los {renames.length} tipos existentes
+                        </span>
+                        El PMS usa abreviaturas («MATR. VIP») y el CMS nombres para el huésped. Si no lo
+                        marcás, se conservan los del CMS.
+                      </span>
+                    </label>
+                  ) : null}
+                </div>
+              )}
+
+              {skipped.length > 0 ? (
+                <p className="text-xs text-amber-700">
+                  {skipped.length} unidad(es) no se pueden importar: {skipped[0].reason}.
+                </p>
+              ) : null}
+
+              {missingTypes.length + missingUnits.length > 0 ? (
+                <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-500">
+                  Solo en el CMS (no se tocan): {missingTypes.length} tipo(s) y {missingUnits.length}{' '}
+                  unidad(es) que ya no están en el PMS.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-gray-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void apply()}
+            disabled={loading || !!error || !preview || !canApply || applying}
+            className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Aplicar cambios
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -511,7 +858,8 @@ function GallerySection() {
   const { data: hotels } = useHotels();
   const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
   const hotelId = hotel?.id || '';
-  const { data: typesData, isLoading: typesLoading, error: typesError } = useRoomTypes(hotelId);
+  // Se leen también los ocultos para poder explicar qué no se publica.
+  const { data: typesData, isLoading: typesLoading, error: typesError } = useRoomTypes(hotelId, true);
   const { data: unitsData, isLoading: unitsLoading } = useRoomUnits(hotelId);
   const { data: gallery, isLoading: galleryLoading, error: galleryError } = useGallery(hotelId);
   const createGalleryItem = useCreateGalleryItem();
@@ -537,10 +885,22 @@ function GallerySection() {
     unitsByType.get(unit.tipo_id)!.push(unit);
   });
 
+  // La galería publica solo tipos activos y con al menos una unidad.
   const sections = GALLERY_GROUPS.map((group) => ({
     ...group,
-    types: types.filter((type) => type.grupo === group.id && (unitsByType.get(type.id)?.length || 0) > 0),
+    types: types.filter(
+      (type) =>
+        type.grupo === group.id &&
+        type.active &&
+        (unitsByType.get(type.id)?.length || 0) > 0
+    ),
   })).filter((group) => group.types.length > 0);
+
+  const hiddenTypes = types.filter((type) => !type.active).length;
+  const emptyTypes = types.filter(
+    (type) => type.active && (unitsByType.get(type.id)?.length || 0) === 0
+  ).length;
+  const notPublished = hiddenTypes + emptyTypes;
 
   const unitCount = (typeId: string) => unitsByType.get(typeId)?.length || 0;
   const totalUnits = units.length;
@@ -616,6 +976,24 @@ function GallerySection() {
           </div>
         ))}
       </div>
+
+      {notPublished > 0 ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+          {notPublished === 1
+            ? '1 tipo del CMS no se publica en la galería'
+            : `${notPublished} tipos del CMS no se publican en la galería`}
+          {hiddenTypes > 0
+            ? `: ${hiddenTypes} ${hiddenTypes === 1 ? 'oculto' : 'ocultos'}`
+            : ''}
+          {emptyTypes > 0
+            ? `${hiddenTypes > 0 ? ' y' : ':'} ${emptyTypes} sin habitaciones`
+            : ''}
+          .{hiddenTypes > 0 ? ' Podés publicarlos desde «Tipos de habitación».' : ''}
+          {emptyTypes > 0
+            ? ' Los tipos sin unidades aparecen cuando el PMS les asigna habitaciones.'
+            : ''}
+        </p>
+      ) : null}
 
       {typesLoading || unitsLoading ? (
         <div className="bg-white rounded-xl border border-gray-100 p-10 flex items-center justify-center text-gray-500">
