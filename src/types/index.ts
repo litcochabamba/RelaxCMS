@@ -112,66 +112,6 @@ export interface HeroSlide {
   updated_at: string;
 }
 
-export interface BookingRoomType {
-  id: string;
-  hotel_id: string;
-  name: string;
-  adults: number;
-  image_url: string;
-  order: number;
-  active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface RoomCategory {
-  id: string;
-  hotel_id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  order: number;
-  active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Room {
-  id: string;
-  hotel_id: string;
-  category_id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  price: number;
-  currency: string;
-  max_adults: number;
-  max_children: number;
-  max_guests: number;
-  bed_type: string | null;
-  size_sqm: number | null;
-  floor: number | null;
-  amenities: string[];
-  services: string[];
-  active: boolean;
-  featured: boolean;
-  order: number;
-  created_at: string;
-  updated_at: string;
-  category?: RoomCategory;
-  images?: RoomImage[];
-}
-
-export interface RoomImage {
-  id: string;
-  room_id: string;
-  image_url: string;
-  alt_text: string | null;
-  is_primary: boolean;
-  order: number;
-  created_at: string;
-}
-
 export type RoomGroup = 'habitacion' | 'departamento';
 
 /** Tipo de habitación o departamento importado del inventario del PMS. */
@@ -356,20 +296,6 @@ export interface HomeBlock {
   /** Segundos por vuelta de la cinta; 0 la deja quieta. */
   speed: number;
   active: boolean;
-}
-
-export interface SeoConfig {
-  id: string;
-  hotel_id: string;
-  page: string;
-  title: string | null;
-  description: string | null;
-  og_image: string | null;
-  keywords: string | null;
-  canonical_url: string | null;
-  schema_json: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 // Auth types

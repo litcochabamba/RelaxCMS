@@ -139,11 +139,11 @@ export default function SupabaseConnection() {
         <h3 className="text-lg font-serif text-gray-900 mb-4">Tablas Disponibles</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {[
-            'hoteles', 'usuarios', 'roles', 'configuracion_hotel',
-            'hero_slides', 'categorias_habitacion', 'habitaciones',
-            'habitacion_imagenes', 'amenidades', 'atractivos_turisticos',
-            'atractivo_imagenes', 'galeria', 'reservas', 'consultas',
-            'comentarios', 'newsletter', 'promociones', 'seo_config'
+            'hoteles', 'usuarios', 'clientes', 'configuracion_hotel',
+            'hero_slides', 'tipos_habitacion', 'unidades_habitacion',
+            'amenidades', 'atractivos_turisticos', 'atractivo_imagenes',
+            'galeria', 'reservas', 'consultas', 'comentarios',
+            'promociones', 'intentos_registro'
           ].map((table) => (
             <div
               key={table}

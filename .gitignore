@@ -7,7 +7,7 @@ dist
 .dev-server.pid
 .cookies.txt
 .freebuff
-supabase
+/supabase
 Credenciales.md
 test-results
 playwright-report

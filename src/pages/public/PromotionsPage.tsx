@@ -1,10 +1,10 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CalendarDays, Loader2, MessageCircle, Tag } from 'lucide-react';
 import { useHotelConfig, useHotels, usePromotions } from '../../hooks/useQueries';
 import type { Hotel, Promotion } from '../../types';
 import { HOTEL_FALLBACKS } from '../../store/hotelStore';
-import { generateWhatsAppUrl } from '../../utils/helpers';
+import PromotionInquiryModal from '../../components/promotions/PromotionInquiryModal';
 import {
   hasPromotionEnded,
   isPromotionUpcoming,
@@ -19,16 +19,6 @@ const TYPE_LABELS: Record<Promotion['type'], string> = {
   seasonal: 'Temporada',
 };
 
-function whatsappLink(phone: string, promotion?: Promotion) {
-  if (!phone) return undefined;
-  const detail = promotion
-    ? `Hola, quiero consultar por la promoción "${promotion.title}"${
-        promotion.code ? ` (código ${promotion.code})` : ''
-      }.`
-    : 'Hola, quiero consultar por las promociones y ofertas vigentes del hotel.';
-  return generateWhatsAppUrl(phone, detail);
-}
-
 export default function PromotionsPage() {
   const { data: hotels } = useHotels();
   const hotelList = (Array.isArray(hotels) ? hotels : []) as Hotel[];
@@ -36,6 +26,15 @@ export default function PromotionsPage() {
   // Si la base todavía no tiene el contacto, se usa el número de respaldo
   // para no abrir un WhatsApp ajeno (el placeholder de la base).
   const whatsapp = hotelList[0]?.whatsapp || HOTEL_FALLBACKS.whatsapp;
+
+  // El botón de WhatsApp abre primero este formulario: así el aviso llega a
+  // recepción con el nombre y el celular de quien consulta.
+  const [inquiryOpen, setInquiryOpen] = useState(false);
+  const [inquiryPromotion, setInquiryPromotion] = useState<Promotion | null>(null);
+  const openInquiry = (promotion: Promotion | null) => {
+    setInquiryPromotion(promotion);
+    setInquiryOpen(true);
+  };
 
   const { data: promotionsData, isLoading } = usePromotions(hotelId);
   const { data: configsData = [] } = useHotelConfig(hotelId);
@@ -65,8 +64,6 @@ export default function PromotionsPage() {
     document.title = 'Promociones · Hostal Relax II';
   }, []);
 
-  const generalWhatsApp = whatsappLink(whatsapp);
-
   return (
     <div className="min-h-screen bg-white pt-24 pb-16">
       <div className="container-wide">
@@ -90,25 +87,20 @@ export default function PromotionsPage() {
             <p className="mt-2 text-sm text-gray-400">
               Escribinos por WhatsApp y te contamos las ofertas disponibles.
             </p>
-            <a
-              href={generalWhatsApp}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-disabled={!generalWhatsApp}
-              className={`mt-8 inline-flex items-center gap-2 rounded-lg bg-gray-900 px-8 py-4 text-sm font-semibold uppercase tracking-wider text-white transition-colors hover:bg-gray-800 ${
-                generalWhatsApp ? '' : 'pointer-events-none opacity-50'
-              }`}
+            <button
+              type="button"
+              onClick={() => openInquiry(null)}
+              className="mt-8 inline-flex items-center gap-2 rounded-lg bg-gray-900 px-8 py-4 text-sm font-semibold uppercase tracking-wider text-white transition-colors hover:bg-gray-800"
             >
               <MessageCircle className="h-4 w-4" />
               Consultar por WhatsApp
-            </a>
+            </button>
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {promotions.map((promotion, index) => {
               const discount = promotionDiscountLabel(promotion);
               const upcoming = isPromotionUpcoming(promotion);
-              const link = whatsappLink(whatsapp, promotion);
               return (
                 <motion.article
                   key={promotion.id}
@@ -174,18 +166,14 @@ export default function PromotionsPage() {
                       ) : null}
                     </div>
 
-                    <a
-                      href={link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-disabled={!link}
-                      className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3 text-sm font-semibold uppercase tracking-wider text-white transition-colors hover:bg-gray-800 ${
-                        link ? '' : 'pointer-events-none opacity-50'
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => openInquiry(promotion)}
+                      className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3 text-sm font-semibold uppercase tracking-wider text-white transition-colors hover:bg-gray-800"
                     >
                       <MessageCircle className="h-4 w-4" />
                       Consultar por WhatsApp
-                    </a>
+                    </button>
                   </div>
                 </motion.article>
               );
@@ -193,6 +181,14 @@ export default function PromotionsPage() {
           </div>
         )}
       </div>
+
+      <PromotionInquiryModal
+        open={inquiryOpen}
+        promotion={inquiryPromotion}
+        hotelId={hotelId}
+        whatsapp={whatsapp}
+        onClose={() => setInquiryOpen(false)}
+      />
     </div>
   );
 }

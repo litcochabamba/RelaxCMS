@@ -483,6 +483,40 @@ export interface ProfileInput {
   profession?: string;
 }
 
+/**
+ * Consulta de una promoción (nombre + celular) antes de abrir WhatsApp.
+ * Va al endpoint público porque el CRUD del CMS exige sesión de personal y
+ * quien consulta es un visitante; la respuesta se guarda en `consultas` con la
+ * marca que lee el feed de RelaxPMS.
+ */
+export async function submitPromotionInquiry(input: {
+  hotel_id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  promotion?: string;
+}): Promise<{ error: string | null }> {
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}api/public/promotion-inquiry`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+
+    const body = (await response.json().catch(() => null)) as
+      | { error?: string | null }
+      | null;
+
+    if (!response.ok) {
+      return { error: body?.error || `No se pudo enviar la consulta (HTTP ${response.status}).` };
+    }
+    return { error: null };
+  } catch {
+    return { error: 'No se pudo conectar con el servidor' };
+  }
+}
+
 // Área de cliente (protegida por la cookie de sesión en el servidor).
 export const clientApi = {
   async me() {

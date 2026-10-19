@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { db } from '../api/client';
 import type {
-  Hotel, HeroSlide, Room, RoomCategory, Amenity,
+  Hotel, HeroSlide, Amenity,
   Attraction, GalleryItem, Comment, Inquiry, Reservation,
-  Promotion, HotelConfig, SeoConfig, BookingRoomType,
+  Promotion, HotelConfig,
   RoomTypeInventory, RoomUnit, User
 } from '../types';
 
@@ -109,56 +109,6 @@ export function useSeedHeroSlides() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['heroSlides'] });
     },
-  });
-}
-
-// Room Categories
-export function useRoomCategories(hotelId: string) {
-  return useQuery({
-    queryKey: ['roomCategories', hotelId],
-    queryFn: async () => {
-      const { data, error } = await db.select<RoomCategory>('categorias_habitacion', {
-        filters: { hotel_id: hotelId, active: true },
-        order: { column: 'order', ascending: true },
-      });
-      if (error) throw new Error(error);
-      return data || [];
-    },
-    enabled: !!hotelId,
-  });
-}
-
-// Rooms
-export function useRooms(hotelId: string, categoryId?: string) {
-  return useQuery({
-    queryKey: ['rooms', hotelId, categoryId],
-    queryFn: async () => {
-      const filters: Record<string, unknown> = { hotel_id: hotelId, active: true };
-      if (categoryId) filters.category_id = categoryId;
-
-      const { data, error } = await db.select<Room>('habitaciones', {
-        filters,
-        order: { column: 'order', ascending: true },
-      });
-      if (error) throw new Error(error);
-      return data || [];
-    },
-    enabled: !!hotelId,
-  });
-}
-
-export function useFeaturedRooms(hotelId: string) {
-  return useQuery({
-    queryKey: ['featuredRooms', hotelId],
-    queryFn: async () => {
-      const { data, error } = await db.select<Room>('habitaciones', {
-        filters: { hotel_id: hotelId, active: true, featured: true },
-        order: { column: 'order', ascending: true },
-      });
-      if (error) throw new Error(error);
-      return data || [];
-    },
-    enabled: !!hotelId,
   });
 }
 
@@ -349,62 +299,6 @@ export function useDeleteAmenity() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amenities'] });
-    },
-  });
-}
-
-// Booking Room Types
-export function useBookingRoomTypes(hotelId: string) {
-  return useQuery({
-    queryKey: ['bookingRoomTypes', hotelId],
-    queryFn: async () => {
-      const { data, error } = await db.select<BookingRoomType>('booking_room_types', {
-        filters: { hotel_id: hotelId, active: true },
-        order: { column: 'order', ascending: true },
-      });
-      if (error) throw new Error(error);
-      return data || [];
-    },
-    enabled: !!hotelId,
-  });
-}
-
-export function useUpdateBookingRoomType() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<BookingRoomType> }) => {
-      const { error } = await db.update('booking_room_types', data as Record<string, unknown>, { id });
-      if (error) throw new Error(error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookingRoomTypes'] });
-    },
-  });
-}
-
-export function useCreateBookingRoomType() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: Omit<BookingRoomType, 'id' | 'created_at' | 'updated_at'>) => {
-      const { data: result, error } = await db.insert<BookingRoomType>('booking_room_types', data);
-      if (error) throw new Error(error);
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookingRoomTypes'] });
-    },
-  });
-}
-
-export function useDeleteBookingRoomType() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await db.delete('booking_room_types', { id });
-      if (error) throw new Error(error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookingRoomTypes'] });
     },
   });
 }
@@ -646,22 +540,6 @@ export function useHotelConfig(hotelId: string) {
   });
 }
 
-// SEO
-export function useSeoConfig(hotelId: string, page: string) {
-  return useQuery({
-    queryKey: ['seo', hotelId, page],
-    queryFn: async () => {
-      const { data, error } = await db.select<SeoConfig>('seo_config', {
-        filters: { hotel_id: hotelId, page },
-        single: true,
-      });
-      if (error) throw new Error(error);
-      return data;
-    },
-    enabled: !!hotelId && !!page,
-  });
-}
-
 // Promociones en el panel: incluye las inactivas, a diferencia de la vista pública.
 export function useAdminPromotions(hotelId: string) {
   return useQuery({
@@ -749,22 +627,6 @@ export function useSetReservationStatus() {
   });
 }
 
-// Update room mutation
-export function useUpdateRoom() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<Room> }) => {
-      const { error } = await db.update('habitaciones', data as Record<string, unknown>, { id });
-      if (error) throw new Error(error);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['allRooms'] });
-      queryClient.invalidateQueries({ queryKey: ['featuredRooms'] });
-    },
-  });
-}
-
 // Update hotel mutation
 export function useUpdateHotel() {
   const queryClient = useQueryClient();
@@ -776,22 +638,6 @@ export function useUpdateHotel() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hotels'] });
     },
-  });
-}
-
-// All rooms for admin (including inactive)
-export function useAllRooms(hotelId: string) {
-  return useQuery({
-    queryKey: ['allRooms', hotelId],
-    queryFn: async () => {
-      const { data, error } = await db.select<Room>('habitaciones', {
-        filters: { hotel_id: hotelId },
-        order: { column: 'order', ascending: true },
-      });
-      if (error) throw new Error(error);
-      return data || [];
-    },
-    enabled: !!hotelId,
   });
 }
 

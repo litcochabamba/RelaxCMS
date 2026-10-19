@@ -4,11 +4,10 @@ import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCmsPanelStore } from '../../store/cmsStore';
 import {
-  useHotels, useRooms, useRoomCategories, useAmenities,
-  useUpdateRoom, useUpdateHotel,
+  useHotels, useAmenities,
+  useUpdateHotel,
   useHeroSlides, useUpdateHeroSlides, useCreateHeroSlide, useDeleteHeroSlide, useSeedHeroSlides,
   useHotelConfig, useUpsertHotelConfig,
-  useBookingRoomTypes, useUpdateBookingRoomType, useCreateBookingRoomType, useDeleteBookingRoomType,
   useComments,
   useAttractionsWithImages,
 } from '../../hooks/useQueries';
@@ -32,7 +31,7 @@ import {
 import { DEMO_HERO_SLIDES } from '../../utils/seedData';
 import { parseHeroOffsetX } from '../home/HeroSection';
 import toast from 'react-hot-toast';
-import type { Attraction, AttractionImage, HeroSlide, Hotel, Room, RoomCategory } from '../../types';
+import type { Attraction, AttractionImage, HeroSlide, Hotel } from '../../types';
 import {
   Palette,
   Info,
@@ -111,17 +110,6 @@ function parseAttractionDurations(value?: string): Record<string, number> {
   }
 }
 
-function parseIdList(value?: string): string[] {
-  if (!value) return [];
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
-  } catch {
-    return [];
-  }
-}
-
 function serializeInfoSets(sets: ShowcaseImageSet[]): string {
   return JSON.stringify(
     sets.map((set) => ({
@@ -154,16 +142,12 @@ export default function CmsPanel() {
   const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
   const hotelId = hotel?.id || '';
 
-  const { data: rooms = [], isLoading: roomsLoading } = useRooms(hotelId);
-  const roomList = (Array.isArray(rooms) ? rooms : []) as Room[];
-  const { data: categories = [] } = useRoomCategories(hotelId);
   const { data: amenities = [], isLoading: amenitiesLoading } = useAmenities(hotelId, true);
   const { data: heroSlides = [], isLoading: heroLoading } = useHeroSlides(hotelId);
   const { data: hotelConfigs = [] } = useHotelConfig(hotelId);
   const amenitiesGroupsConfig =
     (hotelConfigs as ConfigEntry[]).find((config) => config.key === 'amenities_groups')?.value || '';
   const amenitiesEditorRef = useRef<AmenitiesEditorHandle>(null);
-  const { data: bookingRoomTypes = [], isLoading: brtLoading } = useBookingRoomTypes(hotelId);
   const { data: attractionsAll = [], isLoading: attractionsLoading } = useAttractionsWithImages(hotelId, true);
   const attractionsEditorRef = useRef<AttractionsEditorHandle>(null);
   const attractionsFolderOverrides =
@@ -179,20 +163,14 @@ export default function CmsPanel() {
   const { data: dbComments = [] } = useComments(hotelId);
 
   const updateHotel = useUpdateHotel();
-  const updateRoom = useUpdateRoom();
   const updateHeroSlide = useUpdateHeroSlides();
   const createHeroSlide = useCreateHeroSlide();
   const deleteHeroSlide = useDeleteHeroSlide();
   const seedHeroSlides = useSeedHeroSlides();
   const upsertConfig = useUpsertHotelConfig();
-  const updateBRT = useUpdateBookingRoomType();
-  const createBRT = useCreateBookingRoomType();
-  const deleteBRT = useDeleteBookingRoomType();
 
   const [editingHotel, setEditingHotel] = useState<Record<string, string>>({});
   const [logoUploading, setLogoUploading] = useState(false);
-  const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
-  const [editingRoom, setEditingRoom] = useState<Record<string, string>>({});
 
   // Hero slides state
   const [editingSlideId, setEditingSlideId] = useState<string | null>(null);
@@ -255,7 +233,6 @@ export default function CmsPanel() {
         rooms_title: configMap.rooms_title || 'Habitaciones & Departamentos',
         rooms_description: configMap.rooms_description || 'Descubre nuestras habitaciones diseñadas para ofrecerte la máxima comodidad y una experiencia inolvidable.',
         rooms_count: configMap.rooms_count || '5',
-        rooms_featured_ids: configMap.rooms_featured_ids || '[]',
         rooms_cta_color: configMap.rooms_cta_color || '#D4AF37',
         rooms_cta_text_color: configMap.rooms_cta_text_color || '#1a1a2e',
         contact_title: configMap.contact_title || 'Consulta sin\nCompromiso',
@@ -293,21 +270,6 @@ export default function CmsPanel() {
       });
     }
   }, [hotel]);
-
-  const categoryList = (Array.isArray(categories) ? categories : []) as RoomCategory[];
-  const categoryMap = Object.fromEntries(categoryList.map(c => [c.id, c.name]));
-
-  // Orden de los tipos principales en la portada (ids de habitaciones del CMS).
-  const featuredRoomIds = parseIdList(editingSection.rooms_featured_ids);
-  const setFeaturedRoomIds = (ids: string[]) =>
-    setEditingSection(prev => ({ ...prev, rooms_featured_ids: JSON.stringify(ids) }));
-  const moveFeaturedRoom = (index: number, delta: number) => {
-    const next = [...featuredRoomIds];
-    const target = index + delta;
-    if (target < 0 || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
-    setFeaturedRoomIds(next);
-  };
 
   const handleSaveColors = async () => {
     if (!hotelId) return;
@@ -398,40 +360,6 @@ export default function CmsPanel() {
     setLogoUploading(false);
   };
 
-  const handleSaveRoom = async (roomId: string) => {
-    try {
-      const data: Record<string, unknown> = {
-        name: editingRoom.name,
-        price: parseFloat(editingRoom.price) || 0,
-        max_guests: parseInt(editingRoom.max_guests) || 2,
-        description: editingRoom.description,
-      };
-      if (editingRoom.services) {
-        data.services = editingRoom.services.split(',').map(s => s.trim()).filter(Boolean);
-      }
-      if (editingRoom.amenities) {
-        data.amenities = editingRoom.amenities.split(',').map(s => s.trim()).filter(Boolean);
-      }
-      await updateRoom.mutateAsync({ id: roomId, data });
-      setEditingRoomId(null);
-      toast.success('Habitacion actualizada');
-    } catch {
-      toast.error('Error al guardar habitacion');
-    }
-  };
-
-  const startEditRoom = (room: { id: string; name: string; price: number; max_guests: number; description: string | null; services: string[]; amenities: string[] }) => {
-    setEditingRoomId(room.id);
-    setEditingRoom({
-      name: room.name,
-      price: String(room.price),
-      max_guests: String(room.max_guests),
-      description: room.description || '',
-      services: (room.services || []).join(', '),
-      amenities: (room.amenities || []).join(', '),
-    });
-  };
-
   const handleSave = async (section: string) => {
     if (section === 'colors') return handleSaveColors();
     if (section === 'settings') return handleSaveSettings();
@@ -472,13 +400,6 @@ export default function CmsPanel() {
           hotelId,
           key: 'rooms_count',
           value: String(count),
-          group: 'sections',
-        });
-        const validIds = featuredRoomIds.filter(id => roomList.some(room => room.id === id));
-        await upsertConfig.mutateAsync({
-          hotelId,
-          key: 'rooms_featured_ids',
-          value: JSON.stringify(validIds),
           group: 'sections',
         });
         const hex = (value: string | undefined, fallback: string) =>
@@ -772,7 +693,7 @@ export default function CmsPanel() {
                 ) : (
                   <div className="p-6">
                     <button
-                      onClick={() => { setActiveSection(null); setEditingRoomId(null); }}
+                      onClick={() => setActiveSection(null)}
                       className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-6"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -932,105 +853,6 @@ export default function CmsPanel() {
                             )}
                           </div>
                         ))}
-                      </div>
-                    )}
-
-                    {/* Rooms section */}
-                    {activeSection === 'rooms' && (
-                      <div className="space-y-3">
-                        {roomsLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="animate-spin h-6 w-6 text-gray-400" />
-                            <span className="ml-2 text-sm text-gray-500">Cargando...</span>
-                          </div>
-                        ) : rooms.length === 0 ? (
-                          <p className="text-center text-gray-500 py-8">No hay habitaciones registradas</p>
-                        ) : (
-                          rooms.map((room) => (
-                            <div key={room.id} className="border border-gray-100 rounded-xl p-4">
-                              {editingRoomId === room.id ? (
-                                <div className="space-y-3">
-                                  <input
-                                    type="text"
-                                    value={editingRoom.name || ''}
-                                    onChange={(e) => setEditingRoom({ ...editingRoom, name: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    placeholder="Nombre"
-                                  />
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <input
-                                      type="number"
-                                      value={editingRoom.price || ''}
-                                      onChange={(e) => setEditingRoom({ ...editingRoom, price: e.target.value })}
-                                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                      placeholder="Precio"
-                                    />
-                                    <input
-                                      type="number"
-                                      value={editingRoom.max_guests || ''}
-                                      onChange={(e) => setEditingRoom({ ...editingRoom, max_guests: e.target.value })}
-                                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                      placeholder="Max huespedes"
-                                    />
-                                  </div>
-                                  <textarea
-                                    rows={2}
-                                    value={editingRoom.description || ''}
-                                    onChange={(e) => setEditingRoom({ ...editingRoom, description: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
-                                    placeholder="Descripcion"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={editingRoom.services || ''}
-                                    onChange={(e) => setEditingRoom({ ...editingRoom, services: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    placeholder="Servicios (separados por coma)"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={editingRoom.amenities || ''}
-                                    onChange={(e) => setEditingRoom({ ...editingRoom, amenities: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    placeholder="Extras (separados por coma)"
-                                  />
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => handleSaveRoom(room.id)}
-                                      disabled={updateRoom.isPending}
-                                      className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
-                                    >
-                                      {updateRoom.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                      Guardar
-                                    </button>
-                                    <button
-                                      onClick={() => setEditingRoomId(null)}
-                                      className="flex items-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
-                                    >
-                                      <X className="w-4 h-4" />
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-900">{room.name}</p>
-                                    <p className="text-xs text-gray-500">
-                                      {categoryMap[room.category_id] || 'Sin categoria'} · Bs. {room.price} · {room.max_guests} huespedes
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() => startEditRoom(room)}
-                                    className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"
-                                  >
-                                    <Edit3 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        )}
                       </div>
                     )}
 
@@ -1749,97 +1571,6 @@ export default function CmsPanel() {
                           <p className="text-xs text-gray-400 mt-1">
                             Se muestran en filas de 3. Por defecto: 5.
                           </p>
-                        </div>
-
-                        {/* Tipos principales y su orden en la portada */}
-                        <div className="border-t border-gray-100 pt-5 space-y-3">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <label className="text-sm font-medium text-gray-700">
-                              Tipos principales en la portada
-                            </label>
-                            <span className="text-xs text-gray-400">
-                              {featuredRoomIds.length} elegido{featuredRoomIds.length === 1 ? '' : 's'}
-                            </span>
-                          </div>
-                          <p className="text-xs text-gray-400">
-                            Se muestran primero y en este orden. Si eliges menos que los tipos visibles, el
-                            resto se completa en orden alfabético.
-                          </p>
-
-                          {featuredRoomIds.length === 0 ? (
-                            <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
-                              Sin principales: se muestran las habitaciones destacadas y luego el resto en
-                              orden alfabético.
-                            </p>
-                          ) : (
-                            <ol className="space-y-2">
-                              {featuredRoomIds.map((id, index) => {
-                                const room = roomList.find(item => item.id === id);
-                                return (
-                                  <li
-                                    key={id}
-                                    className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2"
-                                  >
-                                    <span className="w-5 text-xs font-mono text-gray-400">{index + 1}</span>
-                                    <span className="flex-1 truncate text-sm text-gray-800">
-                                      {room?.name || 'Tipo no disponible'}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveFeaturedRoom(index, -1)}
-                                      disabled={index === 0}
-                                      title="Subir"
-                                      className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                                    >
-                                      <ChevronUp className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveFeaturedRoom(index, 1)}
-                                      disabled={index === featuredRoomIds.length - 1}
-                                      title="Bajar"
-                                      className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 disabled:opacity-30"
-                                    >
-                                      <ChevronDown className="w-4 h-4" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setFeaturedRoomIds(featuredRoomIds.filter(item => item !== id))}
-                                      title="Quitar de principales"
-                                      className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100"
-                                    >
-                                      <X className="w-4 h-4" />
-                                    </button>
-                                  </li>
-                                );
-                              })}
-                            </ol>
-                          )}
-
-                          {roomList.some(room => !featuredRoomIds.includes(room.id)) ? (
-                            <div>
-                              <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400 mb-2">
-                                Agregar tipo
-                              </p>
-                              <div className="flex flex-wrap gap-2">
-                                {roomList
-                                  .filter(room => !featuredRoomIds.includes(room.id))
-                                  .map(room => (
-                                    <button
-                                      key={room.id}
-                                      type="button"
-                                      onClick={() => setFeaturedRoomIds([...featuredRoomIds, room.id])}
-                                      className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:border-gray-900 hover:text-gray-900 transition-colors"
-                                    >
-                                      <Plus className="w-3 h-3" />
-                                      {room.name}
-                                    </button>
-                                  ))}
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-gray-400">Todos los tipos ya están como principales.</p>
-                          )}
                         </div>
 
                         {/* Cinta "Ver todas las habitaciones" */}

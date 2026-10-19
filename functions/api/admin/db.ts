@@ -6,19 +6,14 @@ const ALLOWED_TABLES = new Set([
   'hoteles',
   'configuracion_hotel',
   'hero_slides',
-  'habitaciones',
-  'habitacion_imagenes',
-  'categorias_habitacion',
   'tipos_habitacion',
   'unidades_habitacion',
   'amenidades',
-  'booking_room_types',
   'atractivos_turisticos',
   'atractivo_imagenes',
   'galeria',
   'comentarios',
   'promociones',
-  'seo_config',
 ]);
 
 type Action = 'insert' | 'update' | 'delete' | 'select';

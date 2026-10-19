@@ -14,6 +14,7 @@ import { handleMedia } from "./functions/api/admin/media";
 import { handleCloudinarySignature } from "./functions/api/admin/cloudinary-signature";
 import { handlePublicComment } from "./functions/api/public/comment";
 import { handlePublicReservation } from "./functions/api/public/reservation";
+import { handlePublicPromotionInquiry } from "./functions/api/public/promotion-inquiry";
 import { handlePublicAvailability } from "./functions/api/public/availability";
 import { handleAdminComments } from "./functions/api/admin/comments";
 import { handleDashboardStats } from "./functions/api/admin/stats";
@@ -22,6 +23,7 @@ import { handleClientMe } from "./functions/api/client/me";
 import { handleClientReservations } from "./functions/api/client/reservations";
 import { handleIntegrationReservations } from "./functions/api/integrations/v1/reservations";
 import { handleIntegrationPromotions } from "./functions/api/integrations/v1/promotions";
+import { handleIntegrationPromotionInquiries } from "./functions/api/integrations/v1/promotion-inquiries";
 import { handleAdminReservations } from "./functions/api/admin/reservations";
 import { onRequest as handlePmsImport } from "./functions/api/admin/pms-import";
 import type { Env } from "./functions/_lib/env";
@@ -271,6 +273,8 @@ function devApiPlugin(loadEnvVars: () => Record<string, string>): Plugin {
             response = await handleCloudinarySignature(request, typedEnv);
           else if (pathname === "/api/public/comment") response = await handlePublicComment(request, typedEnv);
           else if (pathname === "/api/public/reservation") response = await handlePublicReservation(request, typedEnv);
+          else if (pathname === "/api/public/promotion-inquiry")
+            response = await handlePublicPromotionInquiry(request, typedEnv);
           else if (pathname === "/api/public/availability") response = await handlePublicAvailability(request, typedEnv);
           else if (pathname === "/api/admin/comments") response = await handleAdminComments(request, typedEnv);
           else if (pathname === "/api/admin/stats") response = await handleDashboardStats(request, typedEnv);
@@ -282,6 +286,8 @@ function devApiPlugin(loadEnvVars: () => Record<string, string>): Plugin {
             response = await handleIntegrationReservations(request, typedEnv);
           else if (pathname === "/api/integrations/v1/promotions")
             response = await handleIntegrationPromotions(request, typedEnv);
+          else if (pathname === "/api/integrations/v1/promotion-inquiries")
+            response = await handleIntegrationPromotionInquiries(request, typedEnv);
           else if (pathname === "/api/admin/reservations")
             response = await handleAdminReservations(request, typedEnv);
           else if (pathname === "/api/admin/pms-import")
