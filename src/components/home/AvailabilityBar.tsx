@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Users, BedDouble, ChevronDown, Minus, Plus } from 'lucide-react';
 import { useHotelConfig, useHotels, useRoomTypes, useRoomUnits } from '../../hooks/useQueries';
 import type { Hotel, HotelConfig, RoomTypeInventory, RoomUnit } from '../../types';
+import { HOTEL_FALLBACKS } from '../../store/hotelStore';
 import { generateWhatsAppUrl } from '../../utils/helpers';
 import DateRangePicker, { type DateRangeValue } from './DateRangePicker';
 
@@ -89,7 +90,7 @@ export default function AvailabilityBar() {
   const barRef = useRef<HTMLDivElement>(null);
   const { data: hotels } = useHotels();
   const hotelList = (Array.isArray(hotels) ? hotels : []) as Hotel[];
-  const whatsapp = hotelList[0]?.whatsapp || '';
+  const whatsapp = hotelList[0]?.whatsapp || HOTEL_FALLBACKS.whatsapp;
   const hotelId = hotelList[0]?.id || '';
   const { data: hotelConfigs = [] } = useHotelConfig(hotelId);
   const { data: roomTypesData } = useRoomTypes(hotelId);

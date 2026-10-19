@@ -12,7 +12,9 @@ import {
   useComments,
   useAttractionsWithImages,
 } from '../../hooks/useQueries';
-import HeroMediaPicker, { SlideMediaPreview, type HeroMediaField } from './HeroMediaPicker';import ImageFolderPicker from './ImageFolderPicker';
+import HeroMediaPicker, { SlideMediaPreview, type HeroMediaField } from './HeroMediaPicker';
+import ImageFolderPicker from './ImageFolderPicker';
+import ImageUploadButton from './ImageUploadButton';
 import AmenitiesEditor, { type AmenitiesEditorHandle } from './AmenitiesEditor';
 import HomeBlocksEditor from './HomeBlocksEditor';
 import AttractionsEditor, { type AttractionsEditorHandle } from './AttractionsEditor';
@@ -1585,6 +1587,13 @@ export default function CmsPanel() {
                                                 className="w-full px-2 py-2 border border-gray-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-gray-900/10"
                                                 placeholder={`URL ${slotLabel.toLowerCase()}`}
                                               />
+                                              <ImageUploadButton
+                                                folder="relaxweb/images_info"
+                                                label="Subir imagen"
+                                                successMessage="Imagen subida a Cloudinary"
+                                                onUploaded={(url) => updateInfoSetImage(index, target, url)}
+                                                className="w-full"
+                                              />
                                               <button
                                                 type="button"
                                                 onClick={() =>
@@ -1615,7 +1624,7 @@ export default function CmsPanel() {
                                       source="info"
                                       selectedUrl={slot === 'main' ? set.images[0] : set.images[1]}
                                       onSelect={(url) => updateInfoSetImage(index, slot, url)}
-                                      emptyHint="No hay archivos en public/info/images ni public/info/videos. Podés pegar URLs manuales."
+                                      emptyHint="No hay archivos en public/info/images ni public/info/videos. Podés subir una imagen a Cloudinary o pegar una URL manual."
                                     />
                                   )}
                                 </div>

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { CalendarDays, Loader2, MessageCircle, Tag } from 'lucide-react';
 import { useHotelConfig, useHotels, usePromotions } from '../../hooks/useQueries';
 import type { Hotel, Promotion } from '../../types';
+import { HOTEL_FALLBACKS } from '../../store/hotelStore';
 import { generateWhatsAppUrl } from '../../utils/helpers';
 import {
   hasPromotionEnded,
@@ -32,7 +33,9 @@ export default function PromotionsPage() {
   const { data: hotels } = useHotels();
   const hotelList = (Array.isArray(hotels) ? hotels : []) as Hotel[];
   const hotelId = hotelList[0]?.id || '';
-  const whatsapp = hotelList[0]?.whatsapp || '';
+  // Si la base todavía no tiene el contacto, se usa el número de respaldo
+  // para no abrir un WhatsApp ajeno (el placeholder de la base).
+  const whatsapp = hotelList[0]?.whatsapp || HOTEL_FALLBACKS.whatsapp;
 
   const { data: promotionsData, isLoading } = usePromotions(hotelId);
   const { data: configsData = [] } = useHotelConfig(hotelId);

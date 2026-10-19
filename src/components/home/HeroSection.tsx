@@ -88,6 +88,8 @@ export default function HeroSection({ slides: propSlides }: HeroSectionProps) {
   }, [currentSlide, goToSlide, slides.length, slides]);
 
   const slide = slides[currentSlide] ?? slides[0] ?? fallbackSlide;
+  // Cada imagen hace un único zoom in durante el tiempo que dura su slide.
+  const slideDuration = Math.max(Number(slide.duration) || 6, 1);
   const videoUrl = isMobile
     ? slide.video_mobile_url || slide.video_url
     : slide.video_url;
@@ -106,9 +108,9 @@ export default function HeroSection({ slides: propSlides }: HeroSectionProps) {
         <motion.div
           key={currentSlide}
           className="absolute inset-0"
-          initial={{ opacity: 0, scale: 1.1 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 1.2, ease: 'easeInOut' }}
         >
           {videoUrl ? (
@@ -139,12 +141,10 @@ export default function HeroSection({ slides: propSlides }: HeroSectionProps) {
                   src={desktopImageUrl}
                   alt=""
                   className="h-full w-full object-cover"
-                  animate={{
-                    scale: [1, 1.08, 1],
-                  }}
+                  initial={{ scale: 1 }}
+                  animate={{ scale: 1.08 }}
                   transition={{
-                    duration: 8,
-                    repeat: Infinity,
+                    duration: slideDuration,
                     ease: 'linear',
                   }}
                 />

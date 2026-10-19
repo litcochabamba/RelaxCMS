@@ -15,6 +15,9 @@ const ALLOWED_FOLDERS = new Set([
   'relaxweb/tipos',
   'relaxweb/amenidades',
   'relaxweb/promociones',
+  // Imágenes de la sección Información: Cloudinary crea la carpeta al subir
+  // el primer archivo.
+  'relaxweb/images_info',
 ]);
 
 async function sha1Hex(value: string): Promise<string> {
