@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Marcellus&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Colores de marca: los sobrescribe useHotelBranding con los valores guardados. */
+    --brand-primary: #8b0000;
+    --brand-secondary: #1a1a2e;
+    --brand-accent: #d4af37;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Sin scroll horizontal en toda la página. */
+    overflow-x: hidden;
+  }
+
+  body {
+    /* clip no crea un contenedor de scroll: la página sigue desplazándose con la ventana. */
+    overflow-x: clip;
+  }
+
+  body {
+    font-family: 'Marcellus', Georgia, serif;
+    color: #1a1a2e;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Marcellus', Georgia, serif;
+  }
+
+  ::selection {
+    background-color: rgba(26, 26, 46, 0.1);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+  }
+
+  /* La barra horizontal no se muestra nunca. */
+  ::-webkit-scrollbar:horizontal {
+    height: 0;
+  }
+}
+
+/* Redes sociales del footer con los colores de marca. */
+.brand-social {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.brand-social:hover {
+  background-color: var(--brand-accent);
+  color: var(--brand-secondary);
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-8 py-4 bg-gray-900 text-white font-semibold text-sm tracking-wider uppercase
+           hover:bg-gray-800 transition-all duration-300 rounded-lg hover:shadow-lg;
+  }
+
+  .btn-outline {
+    @apply px-8 py-4 border border-gray-900 text-gray-900 font-semibold text-sm tracking-wider uppercase
+           hover:bg-gray-900 hover:text-white transition-all duration-300 rounded-lg;
+  }
+
+  .section-padding {
+    @apply py-24 lg:py-32;
+  }
+
+  .container-wide {
+    width: calc(100% - 20px);
+    max-width: none;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .card-elegant {
+    @apply bg-white rounded-2xl border border-gray-100 hover:border-gray-200
+           hover:shadow-xl transition-all duration-500;
+  }
+
+  .input-elegant {
+    @apply w-full px-4 py-3 bg-white border border-gray-200 rounded-lg text-gray-900
+           focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all;
+  }
+}
+
+@layer utilities {
+  .font-serif {
+    font-family: 'Playfair Display', Georgia, serif;
+  }
+
+  .font-sans {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Animation utilities */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+
+/* Cintas de anuncios: el bloque se duplica y se desplaza sin cortes. */
+@keyframes marquee-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.animate-marquee {
+  animation-name: marquee-x;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* Focus visible for accessibility */
+*:focus-visible {
+  outline: 2px solid #1a1a2e;
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,13 @@
+node_modules
+dist
+.env
+.env.*
+.dev.vars
+.dev-server.log
+.dev-server.pid
+.cookies.txt
+.freebuff
+supabase
+Credenciales.md
+test-results
+playwright-report
