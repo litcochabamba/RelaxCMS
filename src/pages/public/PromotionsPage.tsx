@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { CalendarDays, Loader2, MessageCircle, Tag } from 'lucide-react';
 import { useHotelConfig, useHotels, usePromotions } from '../../hooks/useQueries';
 import type { Hotel, Promotion } from '../../types';
-import { HOTEL_FALLBACKS } from '../../store/hotelStore';
+import { HOTEL_FALLBACKS, useHotelDataStore } from '../../store/hotelStore';
 import PromotionInquiryModal from '../../components/promotions/PromotionInquiryModal';
 import {
   hasPromotionEnded,
@@ -22,7 +22,10 @@ const TYPE_LABELS: Record<Promotion['type'], string> = {
 export default function PromotionsPage() {
   const { data: hotels } = useHotels();
   const hotelList = (Array.isArray(hotels) ? hotels : []) as Hotel[];
-  const hotelId = hotelList[0]?.id || '';
+  // El hotel ya resuelto por el navbar vive en el store: usarlo evita que esta
+  // página espere a la consulta de hoteles antes de pedir las promociones.
+  const storeHotelId = useHotelDataStore((state) => state.hotelId);
+  const hotelId = storeHotelId || hotelList[0]?.id || '';
   // Si la base todavía no tiene el contacto, se usa el número de respaldo
   // para no abrir un WhatsApp ajeno (el placeholder de la base).
   const whatsapp = hotelList[0]?.whatsapp || HOTEL_FALLBACKS.whatsapp;

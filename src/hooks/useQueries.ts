@@ -8,18 +8,24 @@ import type {
 } from '../types';
 
 // Hotels
-export function useHotels() {
-  return useQuery({
-    queryKey: ['hotels'],
+// Exportado para poder precargar la pestaña de promociones desde el navbar sin
+// duplicar la consulta ni la clave de caché.
+export function hotelsQueryOptions() {
+  return {
+    queryKey: ['hotels'] as const,
     queryFn: async () => {
       const { data, error } = await db.select<Hotel>('hoteles', {
         filters: { active: true },
         order: { column: 'name', ascending: true },
       });
       if (error) throw new Error(error);
-      return data || [];
+      return data || ([] as Hotel[]);
     },
-  });
+  };
+}
+
+export function useHotels() {
+  return useQuery(hotelsQueryOptions());
 }
 
 export function useHotel(slug: string) {
@@ -510,9 +516,13 @@ export function useSubmitInquiry() {
 }
 
 // Promotions
-export function usePromotions(hotelId: string) {
-  return useQuery({
-    queryKey: ['promotions', hotelId],
+//
+// Las opciones se exportan para que el navbar pueda precargar la pestaña al
+// pasar el mouse o enfocarla: así el clic encuentra los datos ya en la caché de
+// React Query y no arranca las dos consultas recién en ese momento.
+export function promotionsQueryOptions(hotelId: string) {
+  return {
+    queryKey: ['promotions', hotelId] as const,
     queryFn: async () => {
       const { data, error } = await db.select<Promotion>('promociones', {
         filters: { hotel_id: hotelId, active: true },
@@ -522,13 +532,17 @@ export function usePromotions(hotelId: string) {
       return data || [];
     },
     enabled: !!hotelId,
-  });
+  };
+}
+
+export function usePromotions(hotelId: string) {
+  return useQuery(promotionsQueryOptions(hotelId));
 }
 
 // Hotel Config
-export function useHotelConfig(hotelId: string) {
-  return useQuery({
-    queryKey: ['hotelConfig', hotelId],
+export function hotelConfigQueryOptions(hotelId: string) {
+  return {
+    queryKey: ['hotelConfig', hotelId] as const,
     queryFn: async () => {
       const { data, error } = await db.select<HotelConfig>('configuracion_hotel', {
         filters: { hotel_id: hotelId },
@@ -537,13 +551,18 @@ export function useHotelConfig(hotelId: string) {
       return data || [];
     },
     enabled: !!hotelId,
-  });
+  };
+}
+
+export function useHotelConfig(hotelId: string) {
+  return useQuery(hotelConfigQueryOptions(hotelId));
 }
 
 // Promociones en el panel: incluye las inactivas, a diferencia de la vista pública.
-export function useAdminPromotions(hotelId: string) {
-  return useQuery({
-    queryKey: ['adminPromotions', hotelId],
+// Igual que en la web, se exportan las opciones para precargar la sección.
+export function adminPromotionsQueryOptions(hotelId: string) {
+  return {
+    queryKey: ['adminPromotions', hotelId] as const,
     queryFn: async () => {
       const { data, error } = await db.select<Promotion>('promociones', {
         filters: { hotel_id: hotelId },
@@ -553,7 +572,11 @@ export function useAdminPromotions(hotelId: string) {
       return (data as Promotion[] | null) || [];
     },
     enabled: !!hotelId,
-  });
+  };
+}
+
+export function useAdminPromotions(hotelId: string) {
+  return useQuery(adminPromotionsQueryOptions(hotelId));
 }
 
 function usePromotionMutation<TArgs>(

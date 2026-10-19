@@ -16,7 +16,7 @@ import {
   useAttractionsWithImages, useAllComments, useUsers, useCreateGalleryItem, useDeleteGalleryItem,
   useSetCommentStatus, useDeleteComment, useDashboardStats,
   useReservations, useRoomTypes, useRoomUnits, useSetReservationStatus, useUpdateRoomType,
-  useAdminPromotions, useCreatePromotion, useUpdatePromotion, useDeletePromotion
+  useAdminPromotions, adminPromotionsQueryOptions, useCreatePromotion, useUpdatePromotion, useDeletePromotion
 } from '../../hooks/useQueries';
 import type { ClientAccount, Hotel, Promotion, RoomTypeInventory, RoomUnit, User } from '../../types';
 import { 
@@ -2723,6 +2723,15 @@ export default function AdminDashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { data: hotels } = useHotels();
+  const hotelId = hotels?.[0]?.id || '';
+
+  // Al pasar el mouse por "Promociones" la sección ya llega con sus datos.
+  const prefetchSection = (id: string) => {
+    if (id !== 'promotions' || !hotelId) return;
+    void queryClient.prefetchQuery(adminPromotionsQueryOptions(hotelId));
+  };
 
   const handleLogout = () => {
     logout();
@@ -2758,6 +2767,8 @@ export default function AdminDashboard() {
             <button
               key={item.id}
               onClick={() => setActiveSection(item.id)}
+              onMouseEnter={() => prefetchSection(item.id)}
+              onFocus={() => prefetchSection(item.id)}
               className={`w-full flex items-center gap-3 px-6 py-3 text-sm transition-all ${
                 activeSection === item.id
                   ? 'bg-white/10 text-white border-r-2 border-white'

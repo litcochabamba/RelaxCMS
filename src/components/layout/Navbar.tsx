@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMediaQuery, useScrollPosition } from '../../hooks/useUtils';
 import { useAuthStore } from '../../store/authStore';
 import { useHotelDataStore } from '../../store/hotelStore';
 import { useCmsPanelStore } from '../../store/cmsStore';
 import { cn } from '../../utils/helpers';
+import { prefetchPromotionsPage } from '../../utils/prefetchPromotions';
 
 const navLinks = [
   { label: 'Inicio', href: '/' },
@@ -23,12 +25,20 @@ export default function Navbar() {
   const showDesktopNav = useMediaQuery(DESKTOP_NAV_QUERY);
   const { isAuthenticated, user, logout } = useAuthStore();
   const { hotelName, logoUrl } = useHotelDataStore();
+  const hotelId = useHotelDataStore((state) => state.hotelId);
+  const queryClient = useQueryClient();
   const { toggle } = useCmsPanelStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
 
   const isStaff = user?.role === 'admin' || user?.role === 'moderator';
+
+  // Al pasar el mouse, enfocar o tocar "Promociones" se descarga el chunk de la
+  // página y se piden sus datos; el clic ya no arranca nada desde cero.
+  const prefetchLink = (href: string) => {
+    if (href === '/promociones') prefetchPromotionsPage(queryClient, hotelId);
+  };
 
   // Un solo lugar decide a dónde lleva la cuenta: al panel para el personal del
   // hotel y a la cuenta propia para los clientes.
@@ -83,6 +93,9 @@ export default function Navbar() {
                   <Link
                     key={link.href}
                     to={link.href}
+                    onMouseEnter={() => prefetchLink(link.href)}
+                    onFocus={() => prefetchLink(link.href)}
+                    onTouchStart={() => prefetchLink(link.href)}
                     className={cn(
                       'text-sm font-medium tracking-wider uppercase transition-colors duration-300',
                       isScrolledActive
@@ -282,6 +295,9 @@ export default function Navbar() {
                   <Link
                     key={link.href}
                     to={link.href}
+                    onMouseEnter={() => prefetchLink(link.href)}
+                    onFocus={() => prefetchLink(link.href)}
+                    onTouchStart={() => prefetchLink(link.href)}
                     className="rounded-xl px-3 py-2.5 text-sm font-medium tracking-wider uppercase text-gray-800 transition-colors hover:bg-gray-50 hover:text-gray-900"
                   >
                     {link.label}

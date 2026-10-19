@@ -39,6 +39,16 @@ function LoadingSpinner() {
   );
 }
 
+// Fallback para las páginas públicas: conserva navbar y footer visibles
+// mientras baja el chunk de la ruta, en lugar de tapar todo el sitio.
+function PageLoading() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center bg-white pt-24">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900" />
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/auth/login" replace />;
@@ -64,7 +74,7 @@ function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <Navbar />
-      {children}
+      <Suspense fallback={<PageLoading />}>{children}</Suspense>
       <Footer />
       {showCms && <CmsPanel />}
     </>
