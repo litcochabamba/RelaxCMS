@@ -126,15 +126,13 @@ export default function AvailabilityBar() {
   // La tarjeta se centra sobre la unión del hero y la sección siguiente:
   // se sube la mitad de su alto y se descuenta ese alto del flujo, dejando
   // el padding de la sección siguiente para que el contenido no quede tapado.
-  const [verticalOffset, setVerticalOffset] = useState({ top: 0, bottom: 0 });
+  const [topOffset, setTopOffset] = useState(0);
   useLayoutEffect(() => {
     const element = barRef.current;
     if (!element) return;
-    const nextSectionPadding = 96; // py-24 de la sección que sigue
-    const update = () => {
-      const half = element.offsetHeight / 2;
-      setVerticalOffset({ top: -half, bottom: -Math.min(half, nextSectionPadding) });
-    };
+    // Solo se monta sobre el hero. El aire inferior lo aporta el padding
+    // superior (doblado) de la sección de Información.
+    const update = () => setTopOffset(-element.offsetHeight / 2);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
@@ -180,7 +178,7 @@ export default function AvailabilityBar() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, delay: 0.3 }}
       ref={barRef}
-      style={{ marginTop: verticalOffset.top, marginBottom: verticalOffset.bottom }}
+      style={{ marginTop: topOffset }}
       className="relative z-20 max-w-6xl mx-auto px-4"
     >
       <div className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.12)] p-6 lg:p-8">

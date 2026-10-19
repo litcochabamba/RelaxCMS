@@ -43,7 +43,7 @@ export default function CommentsSection() {
   };
 
   return (
-    <section className="py-24 lg:py-32 bg-white">
+    <section className="py-12 lg:py-16 bg-white">
       <div className="container-wide" ref={ref}>
         {/* Header */}
         <motion.div

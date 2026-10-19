@@ -1,4 +1,5 @@
 import { ExternalLink, MapPin } from 'lucide-react';
+import { osmEmbedUrl } from '../../utils/mapEmbed';
 
 interface AttractionMapProps {
   title: string;
@@ -23,25 +24,6 @@ function readCoordinates(
     return null;
   }
   return { lat: latitude, lng: longitude };
-}
-
-function osmEmbedUrl(latitude: number, longitude: number): string {
-  // Vista de ~2 km de alto, manteniendo la proporción en longitud según la latitud.
-  const latDelta = 0.012;
-  const cos = Math.max(Math.cos((latitude * Math.PI) / 180), 0.2);
-  const lngDelta = latDelta / cos;
-  const bbox = [
-    longitude - lngDelta,
-    latitude - latDelta,
-    longitude + lngDelta,
-    latitude + latDelta,
-  ]
-    .map((value) => value.toFixed(5))
-    .join('%2C');
-
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latitude.toFixed(
-    5
-  )}%2C${longitude.toFixed(5)}`;
 }
 
 function mapsLink(query: string): string {

@@ -8,6 +8,7 @@ import SupabaseConnection from '../../components/admin/SupabaseConnection';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import CountryCodesEditor from '../../components/admin/CountryCodesEditor';
 import StayScheduleSettings from '../../components/admin/StayScheduleSettings';
+import ImageUploadButton from '../../components/admin/ImageUploadButton';
 import { accountsApi } from '../../api/client';
 import { 
   useHotels, useHeroSlides, 
@@ -508,10 +509,18 @@ interface PmsImportPreview {
     unchanged: number;
   };
   units: {
-    create: Array<{ pms_id: number; name: string; type_name: string }>;
+    create: Array<{ pms_id: number; name: string; type_name: string; active?: boolean }>;
     update: Array<{ pms_id: number; name: string; to: { name: string }; changes: string[] }>;
     unchanged: number;
     skipped: Array<{ pms_id: number; name: string; reason: string }>;
+    unusable?: Array<{
+      pms_id: number;
+      name: string;
+      type_name: string;
+      status: number | null;
+      reason: string;
+      is_new: boolean;
+    }>;
   };
   missing: { types: Array<{ pms_id: number; name: string }>; units: Array<{ pms_id: number; name: string }> };
 }
@@ -578,6 +587,7 @@ function PmsImportDialog({
               updated_types: number;
               created_units: number;
               updated_units: number;
+              disabled_units?: number;
               errors: string[];
             } | null;
             error?: string | null;
@@ -590,7 +600,8 @@ function PmsImportDialog({
         toast.error(data.errors[0]);
       } else {
         toast.success(
-          `Importado: ${data?.created_types ?? 0} tipos y ${data?.created_units ?? 0} unidades nuevos`
+          `Importado: ${data?.created_types ?? 0} tipos y ${data?.created_units ?? 0} unidades nuevos` +
+            (data?.disabled_units ? ` · ${data.disabled_units} deshabilitadas` : '')
         );
       }
       onApplied();
@@ -606,6 +617,7 @@ function PmsImportDialog({
   const renames = preview?.types.rename ?? [];
   const newUnits = preview?.units.create ?? [];
   const updatedUnits = preview?.units.update ?? [];
+  const unusableUnits = preview?.units.unusable ?? [];
   const skipped = preview?.units.skipped ?? [];
   const missingTypes = preview?.missing.types ?? [];
   const missingUnits = preview?.missing.units ?? [];
@@ -705,9 +717,34 @@ function PmsImportDialog({
                         {newUnits.length} unidad(es) nueva(s)
                       </p>
                       <p className="mt-1 text-xs text-gray-600">
-                        {newUnits.slice(0, 10).map((unit) => `${unit.name} (${unit.type_name})`).join(', ')}
+                        {newUnits.slice(0, 10).map((unit) =>
+                          `${unit.name} (${unit.type_name})${unit.active === false ? ' · deshabilitada' : ''}`
+                        ).join(', ')}
                         {newUnits.length > 10 ? ` y ${newUnits.length - 10} más` : ''}
                       </p>
+                    </div>
+                  ) : null}
+
+                  {unusableUnits.length > 0 ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-medium text-amber-900">
+                        {unusableUnits.length} unidad(es) quedarán deshabilitadas
+                      </p>
+                      <p className="mt-1 text-xs text-amber-800">
+                        Están en mantenimiento o fuera de servicio en RelaxPMS. No se publican en la galería;
+                        podés volver a habilitarlas desde el inventario.
+                      </p>
+                      <ul className="mt-2 space-y-1 text-xs text-amber-900">
+                        {unusableUnits.slice(0, 8).map((unit) => (
+                          <li key={`${unit.pms_id}-${unit.is_new ? 'new' : 'existing'}`}>
+                            {unit.name} ({unit.type_name}){' '}
+                            <span className="text-amber-700">· {unit.reason}</span>
+                          </li>
+                        ))}
+                        {unusableUnits.length > 8 ? (
+                          <li className="text-amber-700">y {unusableUnits.length - 8} más…</li>
+                        ) : null}
+                      </ul>
                     </div>
                   ) : null}
 
@@ -1179,6 +1216,20 @@ function GallerySection() {
 
         {showForm ? (
           <div className="space-y-3 rounded-lg border border-gray-100 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <ImageUploadButton
+                label="Subir desde mi equipo"
+                onUploaded={(url) => setForm({ ...form, image_url: url })}
+              />
+              <span className="text-xs text-gray-400">o pegá una URL abajo</span>
+            </div>
+            {form.image_url ? (
+              <img
+                src={form.image_url}
+                alt="Vista previa"
+                className="h-40 w-full rounded-lg object-cover"
+              />
+            ) : null}
             <input
               type="url"
               value={form.image_url}

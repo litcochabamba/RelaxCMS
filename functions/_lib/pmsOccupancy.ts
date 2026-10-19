@@ -19,7 +19,7 @@ export interface PmsOccupiedRoom {
   room_name: string | null;
   check_in: string;
   check_out: string | null;
-  reason: 'stay' | 'status';
+  reason: 'stay' | 'status' | 'maintenance' | 'out_of_service';
 }
 
 export interface OccupiedRange {
@@ -132,7 +132,8 @@ export async function loadPmsRoomLabels(env: Env, hotelId: string): Promise<Room
  *
  * Una ocupación sin fecha de salida (`status` sin estadía) bloquea solo el día
  * de hoy: mañana la habitación vuelve a ofrecerse, salvo que el PMS diga otra
- * cosa. Una estadía usa su salida estimada.
+ * cosa. Una estadía usa su salida estimada. Mantenimiento y fuera de servicio
+ * se tratan aparte: bloquean cualquier fecha de la ventana.
  */
 export function pmsRangesForWindow(
   rooms: PmsOccupiedRoom[],
@@ -144,6 +145,13 @@ export function pmsRangesForWindow(
   for (const room of rooms) {
     const label = labels.byPmsId.get(Number(room.pms_room_id));
     if (!label) continue;
+
+    // Mantenimiento y fuera de servicio bloquean toda la ventana consultada:
+    // la unidad no vuelve a estar disponible hasta que el PMS cambie el estado.
+    if (room.reason === 'maintenance' || room.reason === 'out_of_service') {
+      out.push({ room_type: label, check_in: checkIn, check_out: checkOut });
+      continue;
+    }
 
     const from = isDate(room.check_in) ? room.check_in : checkIn;
     const until = isDate(room.check_out) ? room.check_out : plusOneDay(from);

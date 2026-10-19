@@ -609,6 +609,100 @@ export async function uploadMedia(
   }
 }
 
+export interface CloudinaryUpload {
+  url: string;
+  publicId: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * Sube una imagen de la galería a Cloudinary.
+ *
+ * El backend firma la subida; el API secret no llega al navegador. El archivo
+ * viaja directo a Cloudinary, así no pasa por el Functions de Pages.
+ */
+export async function uploadGalleryImage(
+  file: File,
+  folder = 'relaxweb/galeria'
+): Promise<{ upload: CloudinaryUpload | null; error: string | null }> {
+  if (!file.type.startsWith('image/')) {
+    return { upload: null, error: 'El archivo tiene que ser una imagen' };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { upload: null, error: 'La imagen supera los 10 MB' };
+  }
+
+  try {
+    const signResponse = await fetch(`${import.meta.env.BASE_URL}api/admin/cloudinary-signature`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder }),
+    });
+    const signBody = (await signResponse.json().catch(() => null)) as
+      | {
+          data?: {
+            cloud_name: string;
+            api_key: string;
+            timestamp: number;
+            signature: string;
+            folder: string;
+          } | null;
+          error?: string | null;
+        }
+      | null;
+
+    const signed = signBody?.data;
+    if (!signResponse.ok || !signed) {
+      return { upload: null, error: signBody?.error || `No se pudo firmar la subida (HTTP ${signResponse.status})` };
+    }
+
+    const form = new FormData();
+    form.append('file', file);
+    form.append('api_key', signed.api_key);
+    form.append('timestamp', String(signed.timestamp));
+    form.append('signature', signed.signature);
+    form.append('folder', signed.folder);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloud_name)}/image/upload`,
+      { method: 'POST', body: form }
+    );
+    const body = (await response.json().catch(() => null)) as
+      | {
+          secure_url?: string;
+          public_id?: string;
+          width?: number;
+          height?: number;
+          error?: { message?: string } | null;
+        }
+      | null;
+
+    if (!response.ok || !body?.secure_url) {
+      const detail = body?.error?.message || `Cloudinary respondió HTTP ${response.status}`;
+      return {
+        upload: null,
+        error: /missing permissions|not allowed/i.test(detail)
+          ? 'La API key de Cloudinary no tiene permiso para subir imágenes. Habilitalo en Cloudinary → Settings → API Keys.'
+          : detail,
+      };
+    }
+
+    return {
+      upload: {
+        url: body.secure_url,
+        publicId: body.public_id || null,
+        width: body.width || null,
+        height: body.height || null,
+      },
+      error: null,
+    };
+  } catch {
+    return { upload: null, error: 'No se pudo subir la imagen a Cloudinary' };
+  }
+}
+
 /** Borra un archivo del bucket a partir de su ruta relativa. */
 export async function deleteMedia(path: string): Promise<{ error: string | null }> {
   try {

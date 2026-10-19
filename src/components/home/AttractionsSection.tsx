@@ -228,7 +228,7 @@ export default function AttractionsSection() {
   } as React.CSSProperties;
 
   return (
-    <section className="relative isolate overflow-hidden py-20 lg:py-28">
+    <section className="relative isolate overflow-hidden py-12 lg:py-16">
       {/* Fondo: medio del atractivo activo, cubriendo toda la sección */}
       <div className="absolute inset-0 -z-10 bg-gray-900">
         <AnimatePresence mode="sync">

@@ -36,7 +36,7 @@ export default function ContactSection() {
   };
 
   return (
-    <section id="contacto" className="py-24 lg:py-32 bg-white">
+    <section id="contacto" className="py-12 lg:py-16 bg-white">
       <div className="container-wide" ref={ref}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16">
           {/* Left - Hotel Info */}

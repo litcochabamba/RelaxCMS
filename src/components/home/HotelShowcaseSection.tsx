@@ -2,11 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useHotels, useHotelConfig } from '../../hooks/useQueries';
 import Media from '../common/Media';
+import MapEmbed from '../common/MapEmbed';
+import { resolveMapEmbed } from '../../utils/mapEmbed';
 import type { Hotel, HotelConfig } from '../../types';
 
 export interface ShowcaseImageSet {
   id: string;
   images: [string, string]; // [mainImage (top-left), overlappingImage (bottom-right)]
+  /**
+   * Si el espacio es un mapa, acá va el enlace pegado en el CMS. `null`
+   * significa que ese espacio sigue mostrando imagen o video.
+   */
+  maps?: [string | null, string | null];
 }
 
 interface HotelShowcaseSectionProps {
@@ -27,6 +34,7 @@ export const DEFAULT_INFO_IMAGE_SETS: ShowcaseImageSet[] = [
       'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
       'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=600&q=80',
     ],
+    maps: [null, null],
   },
   {
     id: 'hotel-2',
@@ -34,6 +42,7 @@ export const DEFAULT_INFO_IMAGE_SETS: ShowcaseImageSet[] = [
       'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&q=80',
       'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600&q=80',
     ],
+    maps: [null, null],
   },
 ];
 
@@ -50,13 +59,22 @@ export function parseInfoImageSets(raw?: string | null): ShowcaseImageSet[] | nu
     const sets = parsed
       .map((entry, index): ShowcaseImageSet | null => {
         if (!entry || typeof entry !== 'object') return null;
-        const record = entry as { id?: unknown; main?: unknown; secondary?: unknown };
+        const record = entry as {
+          id?: unknown;
+          main?: unknown;
+          secondary?: unknown;
+          mainMap?: unknown;
+          secondaryMap?: unknown;
+        };
         const main = typeof record.main === 'string' ? record.main.trim() : '';
         const secondary = typeof record.secondary === 'string' ? record.secondary.trim() : '';
-        if (!main && !secondary) return null;
+        const mainMap = typeof record.mainMap === 'string' ? record.mainMap : null;
+        const secondaryMap = typeof record.secondaryMap === 'string' ? record.secondaryMap : null;
+        if (!main && !secondary && mainMap === null && secondaryMap === null) return null;
         return {
           id: typeof record.id === 'string' && record.id ? record.id : `info-${index + 1}`,
           images: [main || secondary, secondary || main] as [string, string],
+          maps: [mainMap, secondaryMap],
         };
       })
       .filter((set): set is ShowcaseImageSet => set !== null);
@@ -69,6 +87,17 @@ export function parseInfoImageSets(raw?: string | null): ShowcaseImageSet[] | nu
 
 function getConfigValue(configs: HotelConfig[], key: string): string {
   return configs.find((config) => config.key === key)?.value || '';
+}
+
+/** Cada espacio del conjunto puede ser imagen/video o un mapa cargado en el CMS. */
+function ShowcaseSlot({ set, slot, alt }: { set: ShowcaseImageSet; slot: 0 | 1; alt: string }) {
+  const mapLink = set.maps?.[slot] ?? null;
+  // Si el enlace guardado no se puede interpretar, el visitante sigue viendo
+  // la imagen del espacio; el aviso de error queda en el CMS.
+  if (mapLink && mapLink.trim() && resolveMapEmbed(mapLink)) {
+    return <MapEmbed link={mapLink} title={alt} />;
+  }
+  return <Media src={set.images[slot]} alt={alt} />;
 }
 
 export default function HotelShowcaseSection({
@@ -109,7 +138,7 @@ export default function HotelShowcaseSection({
   const currentSet = imageSets[Math.min(currentIndex, imageSets.length - 1)];
 
   return (
-    <section className="py-24 lg:py-32 bg-white overflow-hidden">
+    <section className="pt-24 pb-12 lg:pt-32 lg:pb-16 bg-white overflow-hidden">
       <div className="max-w-7xl mx-auto px-6 lg:px-12">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-20 items-center">
           {/* Left: Overlapping Images Carousel */}
@@ -129,19 +158,19 @@ export default function HotelShowcaseSection({
               >
                 {/* Contenido principal (arriba a la izquierda, más grande) */}
                 <div className="absolute top-0 left-0 w-[70%] h-[85%] rounded-2xl overflow-hidden shadow-xl">
-                  <Media
-                    src={currentSet.images[0]}
+                  <ShowcaseSlot
+                    set={currentSet}
+                    slot={0}
                     alt="Contenido principal de la sección"
-                    className="w-full h-full object-cover"
                   />
                 </div>
 
                 {/* Contenido secundario (abajo a la derecha, superpuesto) */}
                 <div className="absolute bottom-0 right-0 w-[58%] h-[65%] rounded-2xl overflow-hidden shadow-2xl border-4 border-white">
-                  <Media
-                    src={currentSet.images[1]}
+                  <ShowcaseSlot
+                    set={currentSet}
+                    slot={1}
                     alt="Contenido secundario de la sección"
-                    className="w-full h-full object-cover"
                   />
                 </div>
               </motion.div>

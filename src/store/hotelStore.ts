@@ -5,13 +5,13 @@ import { create } from 'zustand';
  * devuelve el dato: el sitio nunca depende de ellos para mostrar contenido real.
  */
 export const HOTEL_FALLBACKS = {
-  hotelName: 'Hostal Relax',
+  hotelName: 'Hostal Relax II',
   hotelSlug: 'hostal-relax',
   primaryColor: '#8B0000',
   secondaryColor: '#1a1a2e',
   accentColor: '#D4AF37',
-  whatsapp: '59170000000',
-  phone: '+591 4 000000',
+  whatsapp: '59162665925',
+  phone: '+591 62665925',
   email: 'info@hotel.com',
   address: 'Av. Principal #123, Cochabamba',
   facebook: '',

@@ -116,7 +116,7 @@ export default function AmenitiesSection() {
   const visibleGroups = groups.filter((group) => group.visible);
 
   return (
-    <section className="py-24 lg:py-32 bg-gray-50">
+    <section className="py-12 lg:py-16 bg-gray-50">
       <div className="container-wide" ref={ref}>
         {/* Header */}
         <motion.div

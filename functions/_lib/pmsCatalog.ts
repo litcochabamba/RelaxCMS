@@ -36,6 +36,10 @@ export interface PmsCatalogRoom {
   name: string;
   capacity: number | null;
   floor: string | null;
+  /** `rooms.current_status` del PMS: 3 = mantenimiento, 5 = fuera de servicio. */
+  current_status: number | null;
+  /** `false` cuando la habitación no se puede usar (mantenimiento o fuera de servicio). */
+  usable: boolean;
 }
 
 export interface PmsCatalog {
@@ -60,6 +64,7 @@ export interface CmsUnitRow {
   floor: string | null;
   capacity: number | null;
   order: number;
+  active: boolean;
 }
 
 export interface TypeCreatePlan {
@@ -85,6 +90,8 @@ export interface UnitCreatePlan {
   type_name: string;
   capacity: number | null;
   floor: string | null;
+  /** Se crea deshabilitada si el PMS la reporta fuera de servicio. */
+  active: boolean;
 }
 
 export interface UnitUpdatePlan {
@@ -93,6 +100,16 @@ export interface UnitUpdatePlan {
   from: { name: string; capacity: number | null; floor: string | null; type_pms_id: number | null };
   to: { name: string; capacity: number | null; floor: string | null; type_pms_id: number };
   changes: string[];
+}
+
+export interface UnusableUnitPlan {
+  pms_id: number;
+  name: string;
+  type_name: string;
+  status: number | null;
+  reason: string;
+  /** `true` si la unidad todavía no existe en el CMS. */
+  is_new: boolean;
 }
 
 export interface CatalogPlan {
@@ -108,6 +125,8 @@ export interface CatalogPlan {
     update: UnitUpdatePlan[];
     unchanged: number;
     skipped: Array<{ pms_id: number; name: string; reason: string }>;
+    /** Unidades que se van a ocultar por mantenimiento o fuera de servicio. */
+    unusable: UnusableUnitPlan[];
   };
   missing: {
     types: Array<{ pms_id: number; name: string }>;
@@ -117,6 +136,15 @@ export interface CatalogPlan {
 
 const clean = (value: unknown) => String(value ?? '').trim();
 const TIMEOUT_MS = 6000;
+
+/** Estados del PMS que dejan la habitación fuera de servicio. */
+export const UNUSABLE_ROOM_STATUS = new Set([3, 5]);
+
+export function unusableReason(status: number | null): string {
+  if (status === 3) return 'En mantenimiento en RelaxPMS';
+  if (status === 5) return 'Fuera de servicio en RelaxPMS';
+  return 'Deshabilitada en RelaxPMS';
+}
 
 function pmsConfig(env: Env) {
   return {
@@ -211,12 +239,22 @@ export async function fetchPmsCatalog(env: Env): Promise<PmsCatalogResult> {
     return {
       catalog: {
         types: types.filter((type) => Number.isFinite(Number(type?.pms_id)) && clean(type?.name)),
-        rooms: rooms.filter(
-          (room) =>
-            Number.isFinite(Number(room?.pms_id)) &&
-            Number.isFinite(Number(room?.pms_room_type_id)) &&
-            clean(room?.name)
-        ),
+        rooms: rooms
+          .filter(
+            (room) =>
+              Number.isFinite(Number(room?.pms_id)) &&
+              Number.isFinite(Number(room?.pms_room_type_id)) &&
+              clean(room?.name)
+          )
+          .map((room) => {
+            const rawStatus = Number(room?.current_status);
+            const current_status = Number.isFinite(rawStatus) ? rawStatus : null;
+            const usable =
+              typeof room?.usable === 'boolean'
+                ? room.usable
+                : current_status === null || !UNUSABLE_ROOM_STATUS.has(current_status);
+            return { ...room, current_status, usable };
+          }),
       },
       error: null,
       status: 200,
@@ -266,7 +304,7 @@ export function buildCatalogPlan(
       types_without_rooms: catalog.types.length - typesWithRoomsCount,
     },
     types: { create: [], rename: [], unchanged: 0 },
-    units: { create: [], update: [], unchanged: 0, skipped: [] },
+    units: { create: [], update: [], unchanged: 0, skipped: [], unusable: [] },
     missing: { types: [], units: [] },
   };
 
@@ -325,6 +363,8 @@ export function buildCatalogPlan(
     const name = unitName(room.name);
     const capacity = Number.isFinite(Number(room.capacity)) ? Number(room.capacity) : null;
     const floor = clean(room.floor) || null;
+    const typeName =
+      clean(room.room_type) || clean(catalog.types.find((t) => Number(t.pms_id) === typePmsId)?.name);
     const existing = unitsByPms.get(pmsId);
 
     if (!existing) {
@@ -332,10 +372,21 @@ export function buildCatalogPlan(
         pms_id: pmsId,
         name,
         type_pms_id: typePmsId,
-        type_name: clean(room.room_type) || clean(catalog.types.find((t) => Number(t.pms_id) === typePmsId)?.name),
+        type_name: typeName,
         capacity,
         floor,
+        active: room.usable !== false,
       });
+      if (room.usable === false) {
+        plan.units.unusable.push({
+          pms_id: pmsId,
+          name,
+          type_name: typeName,
+          status: room.current_status,
+          reason: unusableReason(room.current_status),
+          is_new: true,
+        });
+      }
       continue;
     }
 
@@ -345,6 +396,18 @@ export function buildCatalogPlan(
     if ((existing.capacity ?? null) !== capacity) changes.push('capacidad');
     if ((existing.floor ?? null) !== floor) changes.push('piso');
     if (Number(existingTypePms) !== typePmsId) changes.push('tipo');
+    if (room.usable === false && existing.active !== false) changes.push('deshabilitar');
+
+    if (room.usable === false && existing.active !== false) {
+      plan.units.unusable.push({
+        pms_id: pmsId,
+        name,
+        type_name: typeName,
+        status: room.current_status,
+        reason: unusableReason(room.current_status),
+        is_new: false,
+      });
+    }
 
     if (changes.length === 0) {
       plan.units.unchanged += 1;

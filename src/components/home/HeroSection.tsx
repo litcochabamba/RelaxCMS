@@ -12,42 +12,31 @@ export function parseHeroOffsetX(value?: string | number | null): number {
   return Math.max(-160, Math.min(600, parsed));
 }
 
-// Demo data - in production this comes from Supabase
-const demoSlides = [
-  {
-    id: '1',
-    image_url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1920&q=80',
-    image_mobile_url: null as string | null,
-    video_url: 'https://noaatcpccjukhrzukcet.supabase.co/storage/v1/object/public/hero-videos/hero-video-demo.mp4',
-    video_mobile_url: null as string | null,
-    title: 'Bienvenido al Paraíso',
-    description: 'Disfruta de una estancia inolvidable en el corazón de Cochabamba. Servicio de clase mundial, habitaciones de lujo y una experiencia que superará tus expectativas.',
-    button_text: 'Reservar Ahora',
-    duration: 8,
-  },
-  {
-    id: '2',
-    image_url: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=1920&q=80',
-    image_mobile_url: null as string | null,
-    video_url: null as string | null,
-    video_mobile_url: null as string | null,
-    title: 'Habitaciones de Lujo',
-    description: 'Cada habitación está diseñada para brindarte el máximo confort. Descansa en camas premium con ropa de cama de primera calidad.',
-    button_text: 'Ver Habitaciones',
-    duration: 6,
-  },
-  {
-    id: '3',
-    image_url: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=1920&q=80',
-    image_mobile_url: null as string | null,
-    video_url: null as string | null,
-    video_mobile_url: null as string | null,
-    title: 'Experiencia Única',
-    description: 'Desde spas de lujo hasta restaurantes gourmet. Creamos experiencias que recordarás para siempre.',
-    button_text: 'Descubrir Más',
-    duration: 6,
-  },
-];
+// Imagen local usada mientras llegan los slides del CMS. Evita mostrar el
+// video de demostración o depender de Unsplash antes de la primera carga.
+const FALLBACK_HERO_IMAGE = `${import.meta.env.BASE_URL}hero/images/horizontal/2.jpg`;
+const FALLBACK_HERO_IMAGE_MOBILE = `${import.meta.env.BASE_URL}hero/images/vertical/2.jpg`;
+
+const fallbackSlide: HeroSlide = {
+  id: 'hero-fallback',
+  hotel_id: '',
+  image_url: FALLBACK_HERO_IMAGE,
+  image_mobile_url: FALLBACK_HERO_IMAGE_MOBILE,
+  video_url: null,
+  video_mobile_url: null,
+  title: 'Bienvenido a Hostal Relax II',
+  description:
+    'Disfruta de una estancia inolvidable en el corazón de Cochabamba. Servicio de clase mundial, habitaciones de lujo y una experiencia que superará tus expectativas.',
+  button_text: 'Reservar Ahora',
+  button_link: '#reservar',
+  duration: 8,
+  order: 0,
+  active: true,
+  created_at: '',
+  updated_at: '',
+};
+
+const FALLBACK_SLIDES: HeroSlide[] = [fallbackSlide];
 
 interface HeroSectionProps {
   slides?: HeroSlide[];
@@ -80,7 +69,7 @@ export default function HeroSection({ slides: propSlides }: HeroSectionProps) {
   const configList = (Array.isArray(configs) ? configs : []) as Array<{ key: string; value: string }>;
   const offsetX = parseHeroOffsetX(configList.find((config) => config.key === 'hero_content_offset_x')?.value);
 
-  const slides = (propSlides && propSlides.length > 0) ? propSlides : demoSlides;
+  const slides: HeroSlide[] = propSlides && propSlides.length > 0 ? propSlides : FALLBACK_SLIDES;
 
   const goToSlide = useCallback((index: number) => {
     if (isTransitioning) return;
@@ -90,20 +79,25 @@ export default function HeroSection({ slides: propSlides }: HeroSectionProps) {
   }, [isTransitioning]);
 
   useEffect(() => {
-    const duration = (slides[currentSlide] as any)?.duration || 6;
+    if (slides.length <= 1) return;
+    const duration = Number(slides[currentSlide]?.duration) || 6;
     const interval = setInterval(() => {
       goToSlide((currentSlide + 1) % slides.length);
     }, duration * 1000);
     return () => clearInterval(interval);
   }, [currentSlide, goToSlide, slides.length, slides]);
 
-  const slide = slides[currentSlide];
+  const slide = slides[currentSlide] ?? slides[0] ?? fallbackSlide;
   const videoUrl = isMobile
     ? slide.video_mobile_url || slide.video_url
     : slide.video_url;
-  const imageUrl = isMobile
-    ? slide.image_mobile_url || slide.image_url
-    : slide.image_url;
+  // La imagen de escritorio y la móvil se resuelven con <picture>, así el
+  // navegador elige la variante vertical sin depender del estado de React.
+  const desktopImageUrl = slide.image_url || FALLBACK_HERO_IMAGE;
+  const mobileImageUrl =
+    slide.image_mobile_url || slide.image_url || FALLBACK_HERO_IMAGE_MOBILE;
+  // El poster del video sí necesita una sola URL.
+  const imageUrl = isMobile ? mobileImageUrl : desktopImageUrl;
 
   return (
     <section className="relative h-screen min-h-[700px] overflow-hidden">
@@ -135,28 +129,26 @@ export default function HeroSection({ slides: propSlides }: HeroSectionProps) {
               />
             </video>
           ) : (
-            /* Image background with Ken Burns effect */
-            <div
-              className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url(${imageUrl})` }}
-            >
-              <motion.div
-                key={imageUrl}
-                className="absolute inset-0"
-                animate={{
-                  scale: [1, 1.08, 1],
-                }}
-                transition={{
-                  duration: 8,
-                  repeat: Infinity,
-                  ease: 'linear',
-                }}
-                style={{
-                  backgroundImage: `url(${imageUrl})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }}
-              />
+            /* Imagen de fondo con efecto Ken Burns. <picture> deja que el
+               navegador elija la variante horizontal o vertical. */
+            <div className="absolute inset-0 overflow-hidden">
+              <picture className="block h-full w-full">
+                <source media="(max-width: 767px)" srcSet={mobileImageUrl} />
+                <motion.img
+                  key={desktopImageUrl}
+                  src={desktopImageUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  animate={{
+                    scale: [1, 1.08, 1],
+                  }}
+                  transition={{
+                    duration: 8,
+                    repeat: Infinity,
+                    ease: 'linear',
+                  }}
+                />
+              </picture>
             </div>
           )}
           {/* Dark overlay */}

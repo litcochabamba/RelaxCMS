@@ -64,7 +64,7 @@ async function loadCmsCatalog(env: Env, hotelId: string): Promise<CmsCatalogResu
     ),
     serviceRequest<CmsUnitRow[]>(
       env,
-      `unidades_habitacion?hotel_id=eq.${encodeURIComponent(hotelId)}&select=id,tipo_id,pms_id,name,floor,capacity,order`
+      `unidades_habitacion?hotel_id=eq.${encodeURIComponent(hotelId)}&select=id,tipo_id,pms_id,name,floor,capacity,order,active`
     ),
   ]);
 
@@ -125,6 +125,7 @@ async function apply(env: Env, hotelId: string, overwriteNames: boolean): Promis
     updated_types: 0,
     created_units: 0,
     updated_units: 0,
+    disabled_units: 0,
     skipped: plan.units.skipped,
     errors: [] as string[],
   };
@@ -215,6 +216,9 @@ async function apply(env: Env, hotelId: string, overwriteNames: boolean): Promis
       if ((existing.capacity ?? null) !== capacity) changes.capacity = capacity;
       if ((existing.floor ?? null) !== floor) changes.floor = floor;
       if (existing.tipo_id !== typeId) changes.tipo_id = typeId;
+      // Mantenimiento y fuera de servicio se ocultan en el CMS. Si la unidad
+      // vuelve a estar disponible no se publica sola: la decisión es del hotel.
+      if (room.usable === false && existing.active !== false) changes.active = false;
       if (Object.keys(changes).length === 0) continue;
 
       const updated = await serviceRequest<unknown>(env, `unidades_habitacion?id=eq.${encodeURIComponent(existing.id)}`, {
@@ -226,6 +230,7 @@ async function apply(env: Env, hotelId: string, overwriteNames: boolean): Promis
         continue;
       }
       result.updated_units += 1;
+      if (changes.active === false) result.disabled_units += 1;
       continue;
     }
 
@@ -241,7 +246,7 @@ async function apply(env: Env, hotelId: string, overwriteNames: boolean): Promis
         capacity,
         amenities: [],
         order: nextUnitOrder++,
-        active: true,
+        active: room.usable !== false,
       }),
     });
     if (inserted.error) {
@@ -249,6 +254,7 @@ async function apply(env: Env, hotelId: string, overwriteNames: boolean): Promis
       continue;
     }
     result.created_units += 1;
+    if (room.usable === false) result.disabled_units += 1;
   }
 
   return json({ data: result, error: null });

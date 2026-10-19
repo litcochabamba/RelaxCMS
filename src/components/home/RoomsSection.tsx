@@ -174,7 +174,7 @@ export default function RoomsSection() {
   const hasData = !!hotelId && displayRooms.length > 0;
 
   return (
-    <section id="habitaciones" className="py-24 lg:py-32 bg-white">
+    <section id="habitaciones" className="py-12 lg:py-16 bg-white">
       <div className="container-wide" ref={ref}>
         {/* Header — always visible */}
         <motion.div

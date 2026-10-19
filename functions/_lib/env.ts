@@ -18,6 +18,10 @@ export interface Env {
   RELAXPMS_API_URL?: string;
   /** Clave para consultar RelaxPMS; si falta se usa INTEGRATIONS_API_KEY. */
   RELAXPMS_API_KEY?: string;
+  /** Cloudinary: subida de imágenes de la galería (firma en el servidor). */
+  CLOUDINARY_CLOUD_NAME?: string;
+  CLOUDINARY_API_KEY?: string;
+  CLOUDINARY_API_SECRET?: string;
 }
 
 /** Variables sin las cuales no se puede autenticar ni leer datos del panel. */

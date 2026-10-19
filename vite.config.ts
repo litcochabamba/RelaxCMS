@@ -11,6 +11,7 @@ import { handleCountryCodes } from "./functions/api/public/country-codes";
 import { handleLogout } from "./functions/api/logout";
 import { handleDb } from "./functions/api/admin/db";
 import { handleMedia } from "./functions/api/admin/media";
+import { handleCloudinarySignature } from "./functions/api/admin/cloudinary-signature";
 import { handlePublicComment } from "./functions/api/public/comment";
 import { handlePublicReservation } from "./functions/api/public/reservation";
 import { handlePublicAvailability } from "./functions/api/public/availability";
@@ -266,6 +267,8 @@ function devApiPlugin(loadEnvVars: () => Record<string, string>): Plugin {
           else if (pathname === "/api/logout") response = await handleLogout(request, typedEnv);
           else if (pathname === "/api/admin/db") response = await handleDb(request, typedEnv);
           else if (pathname === "/api/admin/media") response = await handleMedia(request, typedEnv);
+          else if (pathname === "/api/admin/cloudinary-signature")
+            response = await handleCloudinarySignature(request, typedEnv);
           else if (pathname === "/api/public/comment") response = await handlePublicComment(request, typedEnv);
           else if (pathname === "/api/public/reservation") response = await handlePublicReservation(request, typedEnv);
           else if (pathname === "/api/public/availability") response = await handlePublicAvailability(request, typedEnv);

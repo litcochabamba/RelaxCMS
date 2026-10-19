@@ -13,11 +13,14 @@ import {
   useAttractionsWithImages,
 } from '../../hooks/useQueries';
 import HeroMediaPicker, { SlideMediaPreview, type HeroMediaField } from './HeroMediaPicker';import ImageFolderPicker from './ImageFolderPicker';
+import ImageUploadButton from './ImageUploadButton';
 import AmenitiesEditor, { type AmenitiesEditorHandle } from './AmenitiesEditor';
 import HomeBlocksEditor from './HomeBlocksEditor';
 import AttractionsEditor, { type AttractionsEditorHandle } from './AttractionsEditor';
 import RoomInventoryEditor from './RoomInventoryEditor';
 import Media from '../common/Media';
+import MapEmbed from '../common/MapEmbed';
+import { resolveMapEmbed } from '../../utils/mapEmbed';
 import {
   DEFAULT_INFO_TITLE,
   DEFAULT_INFO_DESCRIPTION,
@@ -37,6 +40,7 @@ import {
   BedDouble,
   Phone,
   Map,
+  MapPin,
   MessageSquare,
   Settings,
   Loader2,
@@ -120,7 +124,13 @@ function parseIdList(value?: string): string[] {
 
 function serializeInfoSets(sets: ShowcaseImageSet[]): string {
   return JSON.stringify(
-    sets.map((set) => ({ id: set.id, main: set.images[0], secondary: set.images[1] }))
+    sets.map((set) => ({
+      id: set.id,
+      main: set.images[0],
+      secondary: set.images[1],
+      mainMap: set.maps?.[0] ?? null,
+      secondaryMap: set.maps?.[1] ?? null,
+    }))
   );
 }
 
@@ -563,8 +573,30 @@ export default function CmsPanel() {
     );
   };
 
+  // Cada espacio de un conjunto puede ser imagen/video (null) o mapa (string
+  // con el enlace pegado; vacío = modo mapa todavía sin enlace).
+  const updateInfoSetMap = (
+    index: number,
+    slot: 'main' | 'secondary',
+    link: string | null
+  ) => {
+    setInfoSets((prev) =>
+      prev.map((set, position) => {
+        if (position !== index) return set;
+        const maps: [string | null, string | null] = set.maps
+          ? [set.maps[0], set.maps[1]]
+          : [null, null];
+        maps[slot === 'main' ? 0 : 1] = link;
+        return { ...set, maps };
+      })
+    );
+  };
+
   const addInfoSet = () => {
-    setInfoSets((prev) => [...prev, { id: `info-${Date.now()}`, images: ['', ''] }]);
+    setInfoSets((prev) => [
+      ...prev,
+      { id: `info-${Date.now()}`, images: ['', ''], maps: [null, null] },
+    ]);
   };
 
   const removeInfoSet = (index: number) => {
@@ -708,7 +740,8 @@ export default function CmsPanel() {
         description: newSlide.description || null,
         button_text: newSlide.button_text || null,
         button_link: null,
-        image_url: newSlide.image_url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1920&q=80',
+        image_url:
+          newSlide.image_url || `${import.meta.env.BASE_URL}hero/images/horizontal/2.jpg`,
         image_mobile_url: newSlide.image_mobile_url || null,
         video_url: newSlide.video_url || null,
         video_mobile_url: newSlide.video_mobile_url || null,
@@ -1503,9 +1536,18 @@ export default function CmsPanel() {
                             </span>
                           </div>
 
+                          <p className="text-[11px] text-gray-400 -mt-1 mb-2">
+                            Cada espacio puede ser Imagen o Mapa. Para el mapa pegá la URL completa de Google
+                            Maps u OpenStreetMap, o coordenadas (lat, lng). Los enlaces cortos
+                            maps.app.goo.gl no se pueden leer.
+                          </p>
+
                           <div className="space-y-3">
                             {infoSets.map((set, index) => {
                               const slot = infoPickerSlot[set.id] || 'main';
+                              const maps = set.maps || [null, null];
+                              const selectedIsMap = maps[slot === 'main' ? 0 : 1] !== null;
+
                               return (
                                 <div key={set.id} className="border border-gray-100 rounded-xl p-3 space-y-3">
                                   <div className="flex items-center justify-between">
@@ -1519,69 +1561,147 @@ export default function CmsPanel() {
                                     </button>
                                   </div>
 
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Principal</p>
-                                      <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                                        {set.images[0] ? (
-                                          <Media src={set.images[0]} alt="Contenido principal" className="w-full h-full object-cover" showVideoBadge />
-                                        ) : (
-                                          <span className="text-[10px] text-gray-400">Sin archivo</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <span className="text-gray-300 pt-4">+</span>
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Secundaria</p>
-                                      <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                                        {set.images[1] ? (
-                                          <Media src={set.images[1]} alt="Contenido secundario" className="w-full h-full object-cover" showVideoBadge />
-                                        ) : (
-                                          <span className="text-[10px] text-gray-400">Sin archivo</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
                                   <div className="grid grid-cols-2 gap-2">
-                                    <input
-                                      type="url"
-                                      value={set.images[0]}
-                                      onChange={(e) => updateInfoSetImage(index, 'main', e.target.value)}
-                                      className="px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                      placeholder="URL principal"
-                                    />
-                                    <input
-                                      type="url"
-                                      value={set.images[1]}
-                                      onChange={(e) => updateInfoSetImage(index, 'secondary', e.target.value)}
-                                      className="px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                      placeholder="URL secundaria"
-                                    />
+                                    {(['main', 'secondary'] as const).map((target) => {
+                                      const slotIndex = target === 'main' ? 0 : 1;
+                                      const mapLink = maps[slotIndex];
+                                      const isMap = mapLink !== null;
+                                      const resolved = isMap ? resolveMapEmbed(mapLink) : null;
+                                      const slotLabel = target === 'main' ? 'Principal' : 'Secundaria';
+                                      const imageValue = set.images[slotIndex];
+
+                                      return (
+                                        <div key={target} className="min-w-0 space-y-2">
+                                          <div className="flex items-center justify-between gap-1">
+                                            <p className="text-[10px] uppercase tracking-wider text-gray-400">
+                                              {slotLabel}
+                                            </p>
+                                            {isMap && (
+                                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-900 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                                                <MapPin className="w-2.5 h-2.5" />
+                                                Mapa
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                                            {isMap ? (
+                                              resolved ? (
+                                                <MapEmbed
+                                                  link={mapLink}
+                                                  title={`Mapa ${slotLabel} del conjunto ${index + 1}`}
+                                                  interactive={false}
+                                                />
+                                              ) : (
+                                                <span className="flex flex-col items-center gap-1 px-2 text-center text-[10px] text-gray-400">
+                                                  <MapPin className="w-4 h-4" />
+                                                  {mapLink.trim() ? 'Enlace no reconocido' : 'Sin enlace de mapa'}
+                                                </span>
+                                              )
+                                            ) : imageValue ? (
+                                              <Media
+                                                src={imageValue}
+                                                alt={`Contenido ${slotLabel.toLowerCase()}`}
+                                                className="w-full h-full object-cover"
+                                                showVideoBadge
+                                              />
+                                            ) : (
+                                              <span className="text-[10px] text-gray-400">Sin archivo</span>
+                                            )}
+                                          </div>
+
+                                          <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-0.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => updateInfoSetMap(index, target, null)}
+                                              className={`px-1 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                                                !isMap
+                                                  ? 'bg-white text-gray-900 shadow-sm'
+                                                  : 'text-gray-500 hover:text-gray-700'
+                                              }`}
+                                            >
+                                              Imagen
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => updateInfoSetMap(index, target, isMap ? mapLink : '')}
+                                              className={`px-1 py-1 rounded-md text-[10px] font-medium transition-colors ${
+                                                isMap
+                                                  ? 'bg-white text-gray-900 shadow-sm'
+                                                  : 'text-gray-500 hover:text-gray-700'
+                                              }`}
+                                            >
+                                              Mapa
+                                            </button>
+                                          </div>
+
+                                          {isMap ? (
+                                            <>
+                                              <input
+                                                type="text"
+                                                value={mapLink}
+                                                onChange={(e) => updateInfoSetMap(index, target, e.target.value)}
+                                                className="w-full px-2 py-2 border border-gray-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                                                placeholder="Enlace del hotel o lat, lng"
+                                              />
+                                              <p
+                                                className={`text-[10px] leading-snug ${
+                                                  !mapLink.trim()
+                                                    ? 'text-gray-400'
+                                                    : resolved
+                                                      ? 'text-green-600'
+                                                      : 'text-amber-600'
+                                                }`}
+                                              >
+                                                {!mapLink.trim()
+                                                  ? 'Pegá un enlace o coordenadas'
+                                                  : resolved
+                                                    ? `Mapa listo (${resolved.provider === 'osm' ? 'OpenStreetMap' : 'Google'})`
+                                                    : 'Enlace no reconocido: usá la URL completa o lat, lng'}
+                                              </p>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <input
+                                                type="url"
+                                                value={imageValue}
+                                                onChange={(e) => updateInfoSetImage(index, target, e.target.value)}
+                                                className="w-full px-2 py-2 border border-gray-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                                                placeholder={`URL ${slotLabel.toLowerCase()}`}
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  setInfoPickerSlot({ ...infoPickerSlot, [set.id]: target })
+                                                }
+                                                className={`w-full px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+                                                  slot === target
+                                                    ? 'bg-gray-900 text-white'
+                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                              >
+                                                {slot === target ? 'Elegir archivo abajo' : 'Asignar archivo'}
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
 
-                                  <div className="flex gap-1">
-                                    {(['main', 'secondary'] as const).map((target) => (
-                                      <button
-                                        key={target}
-                                        onClick={() => setInfoPickerSlot({ ...infoPickerSlot, [set.id]: target })}
-                                        className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
-                                          slot === target
-                                            ? 'bg-gray-900 text-white'
-                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                        }`}
-                                      >
-                                        Asignar a {target === 'main' ? 'principal' : 'secundaria'}
-                                      </button>
-                                    ))}
-                                  </div>
-
-                                  <ImageFolderPicker
-                                    source="info"
-                                    selectedUrl={slot === 'main' ? set.images[0] : set.images[1]}
-                                    onSelect={(url) => updateInfoSetImage(index, slot, url)}
-                                    emptyHint="No hay archivos en public/info/images ni public/info/videos. Podés pegar URLs manuales."
-                                  />
+                                  {selectedIsMap ? (
+                                    <p className="text-[11px] text-gray-400">
+                                      El espacio {slot === 'main' ? 'principal' : 'secundario'} está en modo
+                                      mapa. Cambialo a Imagen para asignar archivos de public/info.
+                                    </p>
+                                  ) : (
+                                    <ImageFolderPicker
+                                      source="info"
+                                      selectedUrl={slot === 'main' ? set.images[0] : set.images[1]}
+                                      onSelect={(url) => updateInfoSetImage(index, slot, url)}
+                                      emptyHint="No hay archivos en public/info/images ni public/info/videos. Podés pegar URLs manuales."
+                                    />
+                                  )}
                                 </div>
                               );
                             })}
@@ -2056,7 +2176,12 @@ export default function CmsPanel() {
                                 />
 
                                 <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Imagen URL</label>
+                                  <div className="mb-1 flex items-center justify-between gap-2">
+                                    <label className="block text-sm font-medium text-gray-700">Imagen URL</label>
+                                    <ImageUploadButton
+                                      onUploaded={(url) => setNewGalleryItem({ ...newGalleryItem, image_url: url })}
+                                    />
+                                  </div>
                                   <input
                                     type="url"
                                     value={newGalleryItem.image_url}
@@ -2147,7 +2272,12 @@ export default function CmsPanel() {
                                   />
 
                                   <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Imagen URL</label>
+                                    <div className="mb-1 flex items-center justify-between gap-2">
+                                      <label className="block text-sm font-medium text-gray-700">Imagen URL</label>
+                                      <ImageUploadButton
+                                        onUploaded={(url) => setEditingGallery({ ...editingGallery, image_url: url })}
+                                      />
+                                    </div>
                                     <input
                                       type="url"
                                       value={editingGallery.image_url || ''}

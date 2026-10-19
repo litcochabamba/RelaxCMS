@@ -287,7 +287,7 @@ export default function BookingSection() {
   };
 
   return (
-    <section id="reservar" className="scroll-mt-20 py-24 lg:py-32 bg-white">
+    <section id="reservar" className="scroll-mt-20 py-12 lg:py-16 bg-white">
       <div className="container-wide">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
           {/* Left - Info */}
