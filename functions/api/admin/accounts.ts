@@ -27,6 +27,7 @@ interface AccountBody {
   phone?: string;
   role?: string;
   hotel_id?: string;
+  active?: boolean;
 }
 
 function accountType(request: Request): 'users' | 'clients' {
@@ -150,6 +151,103 @@ export async function handleAccounts(request: Request, env: Env): Promise<Respon
     return json({ data: result.data?.[0] || null, error: null, emailStatus: delivery }, 201);
   }
 
+  if (request.method === 'PATCH') {
+    const denied = await authorize(env, request, true);
+    if (denied) return denied;
+
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id) return json({ error: 'Falta el id de la cuenta' }, 400);
+
+    const body = (await request.json().catch(() => null)) as AccountBody | null;
+    if (!body) return json({ error: 'Datos no válidos' }, 400);
+
+    const session = await readSession(env, request);
+    const isSelf = session?.sub === id;
+    const payload: Record<string, unknown> = {};
+
+    if (typeof body.name === 'string') {
+      const name = body.name.trim();
+      if (!name) return json({ error: 'El nombre no puede quedar vacío' }, 400);
+      payload.name = name;
+    }
+
+    if (typeof body.username === 'string') {
+      const username = body.username.trim().toLowerCase();
+      if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+        return json(
+          { error: 'El usuario debe tener entre 3 y 32 caracteres (letras, números, punto, guion)' },
+          400
+        );
+      }
+      payload.username = username;
+    }
+
+    if (body.email !== undefined) {
+      payload.email = typeof body.email === 'string' && body.email.trim() ? body.email.trim() : null;
+    }
+
+    if (body.phone !== undefined) {
+      payload.phone = typeof body.phone === 'string' && body.phone.trim() ? body.phone.trim() : null;
+    }
+
+    if (type === 'users' && body.role !== undefined) {
+      const role = body.role.trim();
+      if (!USER_ROLES.includes(role)) {
+        return json({ error: 'Rol no válido para un usuario del sistema' }, 400);
+      }
+      if (isSelf && role !== session?.role) {
+        return json({ error: 'No podés cambiar tu propio rol' }, 400);
+      }
+      payload.role = role;
+    }
+
+    if (body.active !== undefined) {
+      if (isSelf && body.active === false) {
+        return json({ error: 'No podés desactivar tu propia cuenta' }, 400);
+      }
+      payload.active = Boolean(body.active);
+    }
+
+    if (body.password) {
+      if (body.password.length < 6) {
+        return json({ error: 'La contraseña debe tener al menos 6 caracteres' }, 400);
+      }
+      const passwordHash = await hashPassword(env, body.password);
+      if (!passwordHash) return json({ error: 'No se pudo procesar la contraseña' }, 500);
+      payload.password_hash = passwordHash;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return json({ error: 'No hay cambios para guardar' }, 400);
+    }
+
+    const returningColumns =
+      type === 'clients'
+        ? 'id,name,username,email,phone,active,created_at'
+        : 'id,name,username,email,role,active,created_at,hotel_id';
+
+    const result = await serviceRequest<Record<string, unknown>[]>(
+      env,
+      `${table}?id=eq.${encodeURIComponent(id)}&select=${returningColumns}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+        prefer: 'return=representation',
+      }
+    );
+
+    if (result.error) {
+      const duplicated = /duplicate key|already exists/i.test(result.error);
+      return json(
+        { error: duplicated ? 'Ese usuario o correo ya existe' : result.error },
+        duplicated ? 409 : 400
+      );
+    }
+    if (!result.data?.length) return json({ error: 'La cuenta no existe' }, 404);
+
+    return json({ data: result.data[0], error: null });
+  }
+
   if (request.method === 'DELETE') {
     const denied = await authorize(env, request, true);
     if (denied) return denied;
@@ -178,6 +276,9 @@ export const onRequestGet = ({ request, env }: { request: Request; env: Env }) =
   handleAccounts(request, env);
 
 export const onRequestPost = ({ request, env }: { request: Request; env: Env }) =>
+  handleAccounts(request, env);
+
+export const onRequestPatch = ({ request, env }: { request: Request; env: Env }) =>
   handleAccounts(request, env);
 
 export const onRequestDelete = ({ request, env }: { request: Request; env: Env }) =>

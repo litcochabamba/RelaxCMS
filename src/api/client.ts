@@ -363,6 +363,17 @@ export interface AccountInput {
   hotel_id?: string;
 }
 
+export interface AccountUpdateInput {
+  name?: string;
+  username?: string;
+  /** Solo se envía si el administrador escribe una contraseña nueva. */
+  password?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  active?: boolean;
+}
+
 export type AccountKind = 'users' | 'clients';
 
 /** Resultado del envío de credenciales al crear una cuenta. */
@@ -405,6 +416,13 @@ export const accountsApi = {
   create: <T,>(kind: AccountKind, input: AccountInput) =>
     accountsRequest<T>(kind, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    }),
+  update: <T,>(kind: AccountKind, id: string, input: AccountUpdateInput) =>
+    accountsRequest<T>(kind, {
+      method: 'PATCH',
+      id,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
     }),

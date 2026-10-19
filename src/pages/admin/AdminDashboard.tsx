@@ -16,7 +16,7 @@ import {
   useReservations, useRoomTypes, useRoomUnits, useSetReservationStatus, useUpdateRoomType,
   useAdminPromotions, useCreatePromotion, useUpdatePromotion, useDeletePromotion
 } from '../../hooks/useQueries';
-import type { ClientAccount, Hotel, Promotion, RoomTypeInventory, RoomUnit } from '../../types';
+import type { ClientAccount, Hotel, Promotion, RoomTypeInventory, RoomUnit, User } from '../../types';
 import { 
   Building2, Bed, Tag, Star, Image, MapPin, 
   Mail, Users, XCircle, Plus, Edit, Trash2, Eye, 
@@ -145,17 +145,7 @@ function DataSection({
                       {rowActions ? (
                         <div className="flex items-center justify-end gap-2">{rowActions(item)}</div>
                       ) : (
-                        <div className="flex items-center justify-end gap-2">
-                          <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <span className="text-sm text-gray-300">—</span>
                       )}
                     </td>
                   </tr>
@@ -2168,6 +2158,22 @@ function ClientsSection() {
 }
 
 // Users Section
+const EMPTY_USER_FORM = {
+  name: '',
+  username: '',
+  email: '',
+  password: '',
+  role: 'moderator',
+  active: true,
+};
+
+function formatAccountDate(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('es-BO', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
 function UsersSection() {
   const { data: hotels } = useHotels();
   const selectedHotelId = hotels?.[0]?.id || '';
@@ -2176,22 +2182,91 @@ function UsersSection() {
   const queryClient = useQueryClient();
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: '', username: '', email: '', password: '', role: 'moderator' });
+  const [editing, setEditing] = useState<User | null>(null);
+  const [viewing, setViewing] = useState<User | null>(null);
+  const [form, setForm] = useState(EMPTY_USER_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const handleCreate = async () => {
-    if (!form.name.trim() || !form.username.trim() || !form.password) {
-      setFormError('Nombre, usuario y contraseña son obligatorios');
+  const roleLabels: Record<string, string> = {
+    admin: 'Administrador',
+    moderator: 'Moderador',
+    client: 'Cliente',
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditing(null);
+    setForm(EMPTY_USER_FORM);
+    setFormError(null);
+  };
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(EMPTY_USER_FORM);
+    setFormError(null);
+    setShowForm(true);
+  };
+
+  const openEdit = (user: User) => {
+    setEditing(user);
+    setForm({
+      name: user.name || '',
+      username: user.username || '',
+      email: user.email || '',
+      password: '',
+      role: user.role === 'admin' ? 'admin' : 'moderator',
+      active: user.active !== false,
+    });
+    setFormError(null);
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    const name = form.name.trim();
+    const username = form.username.trim();
+    if (!name || !username) {
+      setFormError('Nombre y usuario son obligatorios');
       return;
     }
+    if (!editing && !form.password) {
+      setFormError('La contraseña es obligatoria para un usuario nuevo');
+      return;
+    }
+    if (form.password && form.password.length < 6) {
+      setFormError('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+
     setSaving(true);
     setFormError(null);
+    setActionError(null);
     try {
+      if (editing) {
+        const { data: updated, error: updateError } = await accountsApi.update<User>('users', editing.id, {
+          name,
+          username,
+          email: form.email.trim(),
+          role: form.role,
+          active: form.active,
+          ...(form.password ? { password: form.password } : {}),
+        });
+        if (!updated) {
+          setFormError(updateError || 'No se pudo actualizar el usuario');
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: ['users'] });
+        toast.success('Usuario actualizado');
+        closeForm();
+        return;
+      }
+
       // Alta desde el panel: no requiere captcha (la sesión de admin ya autenticó).
       const { data: created, error: createError, emailStatus } = await accountsApi.create<{ id: string }>('users', {
-        name: form.name.trim(),
-        username: form.username.trim(),
+        name,
+        username,
         email: form.email.trim() || undefined,
         password: form.password,
         role: form.role,
@@ -2202,8 +2277,7 @@ function UsersSection() {
         return;
       }
       await queryClient.invalidateQueries({ queryKey: ['users'] });
-      setForm({ name: '', username: '', email: '', password: '', role: 'moderator' });
-      setShowForm(false);
+      closeForm();
       if (emailStatus?.sent) {
         toast.success(`Credenciales enviadas a ${emailStatus.to}`);
       } else if (emailStatus) {
@@ -2212,23 +2286,102 @@ function UsersSection() {
         toast.success('Usuario creado');
       }
     } catch {
-      setFormError('No se pudo crear el usuario');
+      setFormError(editing ? 'No se pudo actualizar el usuario' : 'No se pudo crear el usuario');
     } finally {
       setSaving(false);
     }
   };
 
-  const roleLabels: Record<string, string> = {
-    admin: 'Administrador',
-    moderator: 'Moderador',
-    client: 'Cliente',
+  const handleDelete = async (user: User) => {
+    if (user.id === currentUser?.id) return;
+    if (!window.confirm(`¿Eliminar la cuenta de ${user.name} (@${user.username || 'sin usuario'})?`)) {
+      return;
+    }
+    setDeletingId(user.id);
+    setActionError(null);
+    const { error: deleteError } = await accountsApi.remove('users', user.id);
+    setDeletingId(null);
+    if (deleteError) {
+      setActionError(deleteError);
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: ['users'] });
+    toast.success('Usuario eliminado');
   };
 
   return (
     <div className="space-y-4">
+      {viewing && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 p-4"
+          onClick={() => setViewing(null)}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Detalle de ${viewing.name}`}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-serif text-gray-900">{viewing.name}</h3>
+                <p className="text-sm text-gray-500">@{viewing.username || 'sin usuario'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewing(null)}
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                title="Cerrar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <dl className="mt-5 space-y-3 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">Email</dt>
+                <dd className="text-right text-gray-900">{viewing.email || '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">Rol</dt>
+                <dd className="text-right text-gray-900">{roleLabels[viewing.role] || viewing.role}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">Estado</dt>
+                <dd className="text-right text-gray-900">{viewing.active !== false ? 'Activo' : 'Inactivo'}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">Creado</dt>
+                <dd className="text-right text-gray-900">{formatAccountDate(viewing.created_at)}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-gray-500">Último acceso</dt>
+                <dd className="text-right text-gray-900">{formatAccountDate(viewing.last_login)}</dd>
+              </div>
+            </dl>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const target = viewing;
+                  setViewing(null);
+                  openEdit(target);
+                }}
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                <Edit className="h-4 w-4" /> Editar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-100 p-6 space-y-3">
-          <h3 className="text-lg font-serif text-gray-900">Nuevo usuario</h3>
+          <h3 className="text-lg font-serif text-gray-900">
+            {editing ? `Editar usuario · @${editing.username || ''}` : 'Nuevo usuario'}
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input
               type="text"
@@ -2255,40 +2408,63 @@ function UsersSection() {
               type="password"
               value={form.password}
               onChange={(event) => setForm({ ...form, password: event.target.value })}
-              placeholder="Contraseña"
+              placeholder={editing ? 'Nueva contraseña (opcional)' : 'Contraseña'}
+              autoComplete="new-password"
               className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
             />
             <select
               value={form.role}
               onChange={(event) => setForm({ ...form, role: event.target.value })}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+              disabled={editing?.id === currentUser?.id}
+              className="w-full px-4 py-3 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-gray-900/10 disabled:bg-gray-50 disabled:text-gray-500"
             >
               <option value="moderator">Moderador</option>
               <option value="admin">Administrador</option>
             </select>
+            {editing ? (
+              <label className="flex items-center gap-2 px-4 py-3 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.active}
+                  disabled={editing.id === currentUser?.id}
+                  onChange={(event) => setForm({ ...form, active: event.target.checked })}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                Cuenta activa
+              </label>
+            ) : null}
           </div>
           <p className="text-xs text-gray-400">
-            Alta desde el panel: no pide captcha. Los clientes se crean en la pestaña Clientes. Si cargás
-            un correo, recibe ahí su usuario y contraseña.
+            {editing
+              ? editing.id === currentUser?.id
+                ? 'No podés cambiar tu propio rol ni desactivar tu cuenta. Dejá la contraseña vacía para conservarla.'
+                : 'Dejá la contraseña vacía para conservarla. Los cambios se aplican al instante.'
+              : 'Alta desde el panel: no pide captcha. Los clientes se crean en la pestaña Clientes. Si cargás un correo, recibe ahí su usuario y contraseña.'}
           </p>
           {formError && <p className="text-sm text-red-600">{formError}</p>}
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={handleCreate}
+              onClick={() => void handleSave()}
               disabled={saving}
               className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
             >
-              {saving ? 'Creando...' : 'Crear usuario'}
+              {saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Crear usuario'}
             </button>
             <button
               type="button"
-              onClick={() => { setShowForm(false); setFormError(null); }}
+              onClick={closeForm}
               className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
             >
               Cancelar
             </button>
           </div>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {actionError}
         </div>
       )}
 
@@ -2314,21 +2490,50 @@ function UsersSection() {
             ),
           },
           { key: 'username', label: 'Usuario' },
-          { key: 'email', label: 'Email' },
+          { key: 'email', label: 'Email', render: (item: any) => item.email || '—' },
           { key: 'role', label: 'Rol', render: (item: any) => roleLabels[item.role] || item.role },
           {
             key: 'active',
             label: 'Estado',
             render: (item: any) => (
-              <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                {item.active ? 'Activo' : 'Inactivo'}
+              <span className={`px-2 py-1 rounded-full text-xs ${item.active !== false ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                {item.active !== false ? 'Activo' : 'Inactivo'}
               </span>
             ),
           },
         ]}
         emptyMessage="No hay usuarios registrados"
         addLabel="Nuevo usuario"
-        onAdd={() => setShowForm(true)}
+        onAdd={openCreate}
+        rowActions={(item: User) => (
+          <>
+            <button
+              type="button"
+              onClick={() => setViewing(item)}
+              title="Ver detalle"
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => openEdit(item)}
+              title="Editar usuario"
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDelete(item)}
+              disabled={item.id === currentUser?.id || deletingId === item.id}
+              title={item.id === currentUser?.id ? 'No podés eliminar tu propia cuenta' : 'Eliminar usuario'}
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              {deletingId === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+            </button>
+          </>
+        )}
       />
     </div>
   );
