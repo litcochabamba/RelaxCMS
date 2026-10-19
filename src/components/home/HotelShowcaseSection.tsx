@@ -27,6 +27,13 @@ export const DEFAULT_INFO_TITLE = 'El hotel más seguro y mejor valorado de Coch
 
 export const DEFAULT_INFO_DESCRIPTION = `Su seguridad y comodidad son nuestra prioridad, por lo que nuestro meticuloso proceso de selección garantiza que cada hotel cumpla con estrictos estándares de calidad. Ya sea que nos visite por negocios o por placer, confíe en nosotros para brindarle una estadía que combine la máxima seguridad y un servicio excepcional.\n\nDescubra Cochabamba como nunca antes con nuestra cuidada selección de alojamientos que cuentan con ubicaciones privilegiadas y medidas de seguridad inigualables. Desde encantadores hoteles boutique hasta lujosas opciones en el centro de la ciudad, hemos hecho el trabajo preliminar para presentarle una variedad de opciones que le garantizan una estadía sin preocupaciones.`;
 
+/**
+ * Ubicación del hostal: es el mapa que se muestra por defecto en el espacio
+ * principal de Información. El panel puede reemplazarlo por otro enlace.
+ */
+export const DEFAULT_INFO_MAP_URL =
+  'https://www.google.com/maps/place/hostal+relax+II/data=!4m2!3m1!1s0x93e3731b276ca867:0x3f683d35c71f1b72?sa=X&ved=1t:242&ictx=111';
+
 export const DEFAULT_INFO_IMAGE_SETS: ShowcaseImageSet[] = [
   {
     id: 'hotel-1',
@@ -34,15 +41,9 @@ export const DEFAULT_INFO_IMAGE_SETS: ShowcaseImageSet[] = [
       'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
       'https://images.unsplash.com/photo-1582719508461-905c673771fd?w=600&q=80',
     ],
-    maps: [null, null],
-  },
-  {
-    id: 'hotel-2',
-    images: [
-      'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=800&q=80',
-      'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=600&q=80',
-    ],
-    maps: [null, null],
+    // El espacio grande arranca con el mapa del hotel; el secundario sigue
+    // siendo una foto para que la composición no quede vacía.
+    maps: [DEFAULT_INFO_MAP_URL, null],
   },
 ];
 

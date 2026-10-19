@@ -310,6 +310,19 @@ function RoomsSection() {
   const updateType = useUpdateRoomType();
   const [importOpen, setImportOpen] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [imageSavingId, setImageSavingId] = useState<string | null>(null);
+
+  const saveTypeImage = async (type: RoomTypeInventory, url: string) => {
+    setImageSavingId(type.id);
+    try {
+      await updateType.mutateAsync({ id: type.id, data: { image_url: url } });
+      toast.success(`Foto de «${type.name}» actualizada`);
+    } catch {
+      toast.error('No se pudo guardar la foto del tipo');
+    } finally {
+      setImageSavingId(null);
+    }
+  };
 
   const toggleActive = async (type: RoomTypeInventory) => {
     setTogglingId(type.id);
@@ -435,7 +448,17 @@ function RoomsSection() {
                                   <Bed className="w-5 h-5" />
                                 </div>
                               )}
-                              <span className="text-sm font-medium text-gray-900">{type.name}</span>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900">{type.name}</p>
+                                <ImageUploadButton
+                                  label="Cambiar foto"
+                                  folder="relaxweb/tipos"
+                                  successMessage=""
+                                  disabled={imageSavingId === type.id}
+                                  className="mt-1 !px-2 !py-1 !text-[10px]"
+                                  onUploaded={(url) => void saveTypeImage(type, url)}
+                                />
+                              </div>
                             </div>
                           </td>
                           <td className="px-6 py-3 text-sm text-gray-700">
@@ -1889,13 +1912,29 @@ function PromotionsSection() {
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-sm font-medium text-gray-700">Imagen (URL)</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <ImageUploadButton
+                  label="Subir desde mi equipo"
+                  folder="relaxweb/promociones"
+                  successMessage=""
+                  onUploaded={(url) => setForm({ ...form, image_url: url })}
+                />
+                <span className="text-xs text-gray-400">o pegá una URL</span>
+              </div>
               <input
                 type="url"
                 value={form.image_url}
                 onChange={(event) => setForm({ ...form, image_url: event.target.value })}
-                className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm focus:border-gray-900 focus:outline-none"
+                className="mt-2 w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm focus:border-gray-900 focus:outline-none"
                 placeholder="https://..."
               />
+              {form.image_url ? (
+                <img
+                  src={form.image_url}
+                  alt="Vista previa de la promoción"
+                  className="mt-3 aspect-square w-32 rounded-lg border border-gray-200 object-cover"
+                />
+              ) : null}
             </div>
           </div>
 

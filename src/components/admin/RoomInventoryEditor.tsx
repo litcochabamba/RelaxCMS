@@ -13,7 +13,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { uploadMedia } from '../../api/client';
+import { uploadCloudinaryImage } from '../../api/client';
 import {
   useHotelConfig,
   useRoomTypes,
@@ -287,16 +287,16 @@ export default function RoomInventoryEditor({ hotelId }: RoomInventoryEditorProp
 
   const handleUpload = async (type: RoomTypeInventory, file: File | undefined) => {
     if (!file) return;
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('La imagen supera los 50 MB');
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('La imagen supera los 10 MB');
       return;
     }
     setUploadingTypeId(type.id);
-    const { media, error } = await uploadMedia(file, 'rooms/tipos');
-    if (error || !media) {
+    const { upload, error } = await uploadCloudinaryImage(file, 'relaxweb/tipos');
+    if (error || !upload) {
       toast.error(error || 'No se pudo subir la imagen');
     } else {
-      setDraft(type.id, { image_url: media.url });
+      setDraft(type.id, { image_url: upload.url });
       toast.success('Imagen subida. Guardá el tipo para aplicarla.');
     }
     setUploadingTypeId(null);

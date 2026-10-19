@@ -10,7 +10,12 @@ import { json, readSession, type Env } from '../../_lib/env';
  * que solo sirve para subir a esa carpeta y vence en poco tiempo.
  */
 
-const ALLOWED_FOLDERS = new Set(['relaxweb/galeria']);
+const ALLOWED_FOLDERS = new Set([
+  'relaxweb/galeria',
+  'relaxweb/tipos',
+  'relaxweb/amenidades',
+  'relaxweb/promociones',
+]);
 
 async function sha1Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(value));

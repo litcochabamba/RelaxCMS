@@ -622,7 +622,7 @@ export interface CloudinaryUpload {
  * El backend firma la subida; el API secret no llega al navegador. El archivo
  * viaja directo a Cloudinary, así no pasa por el Functions de Pages.
  */
-export async function uploadGalleryImage(
+export async function uploadCloudinaryImage(
   file: File,
   folder = 'relaxweb/galeria'
 ): Promise<{ upload: CloudinaryUpload | null; error: string | null }> {

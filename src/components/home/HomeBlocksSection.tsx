@@ -2,8 +2,6 @@ import { Link } from 'react-router-dom';
 import type { HomeBlock, HomeBlockPlacement } from '../../types';
 
 export const PLACEMENT_LABELS: Record<HomeBlockPlacement, string> = {
-  hero: 'Hero',
-  availability: 'Barra de disponibilidad',
   showcase: 'Información',
   amenities: 'Amenidades',
   rooms: 'Habitaciones',
@@ -48,9 +46,13 @@ export function parseHomeBlocks(value?: string | null): HomeBlock[] {
       .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
       .map((item, index) => {
         const kind = item.kind === 'cinta' ? 'cinta' : 'aviso';
-        const after = PLACEMENTS.includes(item.after as HomeBlockPlacement)
-          ? (item.after as HomeBlockPlacement)
-          : 'hero';
+        // Los bloques viejos ubicados debajo del hero se reubican después de
+        // Información: ese primer espacio ya no admite avisos.
+        const requested =
+          item.after === 'hero' || item.after === 'availability' ? 'showcase' : item.after;
+        const after = PLACEMENTS.includes(requested as HomeBlockPlacement)
+          ? (requested as HomeBlockPlacement)
+          : 'showcase';
         const height = Number(item.height);
         const speed = Number(item.speed);
         return {

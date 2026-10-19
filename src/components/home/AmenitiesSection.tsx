@@ -60,12 +60,14 @@ interface AmenityCardProps {
   name: string;
   description?: string | null;
   icon?: string | null;
+  imageUrl?: string | null;
   delay: number;
   isVisible: boolean;
 }
 
-// Card rectangular con el icono sobresaliendo por el borde superior.
-function AmenityCard({ name, description, icon, delay, isVisible }: AmenityCardProps) {
+// Card rectangular con el icono sobresaliendo por el borde superior. Si la
+// amenidad tiene foto, la foto ocupa el ancho de la card y el texto va debajo.
+function AmenityCard({ name, description, icon, imageUrl, delay, isVisible }: AmenityCardProps) {
   const Icon = getAmenityIcon(icon);
 
   return (
@@ -75,9 +77,19 @@ function AmenityCard({ name, description, icon, delay, isVisible }: AmenityCardP
       transition={{ duration: 0.5, delay }}
       className="group relative rounded-2xl border border-gray-200/80 bg-white px-6 pb-6 pt-9 shadow-[0_2px_10px_rgba(15,23,42,0.04)] transition-all duration-300 hover:-translate-y-1 hover:border-gray-300 hover:shadow-[0_20px_40px_-24px_rgba(15,23,42,0.45)]"
     >
-      <span className="absolute -top-5 left-6 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gray-900 text-white shadow-lg shadow-gray-900/25 ring-4 ring-white transition-colors duration-300 group-hover:bg-gray-700">
+      <span className="absolute -top-5 left-6 z-10 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gray-900 text-white shadow-lg shadow-gray-900/25 ring-4 ring-white transition-colors duration-300 group-hover:bg-gray-700">
         <Icon className="h-5 w-5" strokeWidth={1.6} />
       </span>
+      {imageUrl ? (
+        <div className="-mx-6 -mt-9 mb-4 overflow-hidden rounded-t-2xl bg-gray-100">
+          <img
+            src={imageUrl}
+            alt={name}
+            loading="lazy"
+            className="aspect-[16/9] w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+          />
+        </div>
+      ) : null}
       <h4 className="mb-1.5 text-base font-semibold leading-snug text-gray-900">{name}</h4>
       {description ? (
         <p className="text-sm leading-relaxed text-gray-500">{description}</p>
@@ -179,6 +191,7 @@ export default function AmenitiesSection() {
                       name={amenity.name}
                       description={amenity.description}
                       icon={amenity.icon}
+                      imageUrl={amenity.image_url}
                       delay={groupIndex * 0.1 + index * 0.05}
                       isVisible={isVisible}
                     />

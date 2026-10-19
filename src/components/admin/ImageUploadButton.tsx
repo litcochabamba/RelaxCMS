@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Loader2, Upload } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { uploadGalleryImage } from '../../api/client';
+import { uploadCloudinaryImage } from '../../api/client';
 
 interface ImageUploadButtonProps {
   onUploaded: (url: string) => void;
@@ -9,6 +9,8 @@ interface ImageUploadButtonProps {
   folder?: string;
   disabled?: boolean;
   className?: string;
+  /** Vacío para que el formulario que lo usa muestre su propio mensaje. */
+  successMessage?: string;
 }
 
 /**
@@ -21,6 +23,7 @@ export default function ImageUploadButton({
   folder = 'relaxweb/galeria',
   disabled = false,
   className = '',
+  successMessage = 'Imagen subida',
 }: ImageUploadButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -28,7 +31,7 @@ export default function ImageUploadButton({
   const handleFile = async (file: File | undefined) => {
     if (!file) return;
     setUploading(true);
-    const { upload, error } = await uploadGalleryImage(file, folder);
+    const { upload, error } = await uploadCloudinaryImage(file, folder);
     setUploading(false);
     if (inputRef.current) inputRef.current.value = '';
 
@@ -37,7 +40,7 @@ export default function ImageUploadButton({
       return;
     }
     onUploaded(upload.url);
-    toast.success('Imagen subida');
+    if (successMessage) toast.success(successMessage);
   };
 
   return (

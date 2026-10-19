@@ -14,12 +14,14 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  Image as ImageIcon,
   Loader2,
   Pencil,
   Plus,
   Trash2,
 } from 'lucide-react';
 import { AMENITY_ICON_OPTIONS, getAmenityIcon } from '../../utils/amenityIcons';
+import ImageUploadButton from './ImageUploadButton';
 import {
   parseAmenityGroups,
   serializeAmenityGroups,
@@ -40,6 +42,7 @@ interface AmenityDraft {
   id?: string;
   name: string;
   description: string;
+  image_url: string;
   icon: string;
   active: boolean;
 }
@@ -95,6 +98,7 @@ function buildDrafts(amenities: Amenity[], groupsConfig?: string): GroupDraft[] 
           id: amenity.id,
           name: amenity.name,
           description: amenity.description || '',
+          image_url: amenity.image_url || '',
           icon: amenity.icon || 'CircleDot',
           active: amenity.active,
         })),
@@ -126,7 +130,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
         `${amenities
           .map(
             (amenity) =>
-              `${amenity.id}:${amenity.category}:${amenity.name}:${amenity.icon}:${amenity.active}:${amenity.order}:${amenity.description ?? ''}`
+              `${amenity.id}:${amenity.category}:${amenity.name}:${amenity.icon}:${amenity.active}:${amenity.order}:${amenity.description ?? ''}:${amenity.image_url ?? ''}`
           )
           .join('|')}::${groupsConfig ?? ''}`,
       [amenities, groupsConfig]
@@ -206,7 +210,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                 ...group,
                 items: [
                   ...group.items,
-                  { key, name: '', description: '', icon: 'CircleDot', active: true },
+                  { key, name: '', description: '', image_url: '', icon: 'CircleDot', active: true },
                 ],
               }
             : group
@@ -273,6 +277,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
               category: group.category,
               name: item.name.trim(),
               description: item.description.trim() || null,
+              image_url: item.image_url.trim() || null,
               icon: item.icon || 'CircleDot',
               active: item.active,
               order: position,
@@ -287,6 +292,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                 before.category !== payload.category ||
                 before.name !== payload.name ||
                 (before.description || '') !== (payload.description || '') ||
+                (before.image_url || '') !== (payload.image_url || '') ||
                 (before.icon || '') !== payload.icon ||
                 before.active !== payload.active ||
                 before.order !== payload.order;
@@ -475,6 +481,47 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
 
                           <div>
                             <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                              Foto de la amenidad (opcional)
+                            </p>
+                            <div className="flex items-start gap-2">
+                              <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+                                {item.image_url ? (
+                                  <img
+                                    src={item.image_url}
+                                    alt={item.name || 'Amenidad'}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <ImageIcon className="h-5 w-5 text-gray-300" />
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <ImageUploadButton
+                                  label={item.image_url ? 'Cambiar foto' : 'Subir foto'}
+                                  folder="relaxweb/amenidades"
+                                  successMessage=""
+                                  onUploaded={(url) => patchItem(group.key, item.key, { image_url: url })}
+                                  className="!px-2.5 !py-1.5 !text-[11px]"
+                                />
+                                {item.image_url ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => patchItem(group.key, item.key, { image_url: '' })}
+                                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-medium text-red-500 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                    Quitar
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                            <p className="mt-1 text-[10px] text-gray-400">
+                              Se guarda con «Guardar cambios». La foto se sube a relaxweb/amenidades.
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
                               Icono
                             </p>
                             <div className="grid max-h-32 grid-cols-8 gap-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5">
@@ -552,11 +599,19 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                       >
                         <GripVertical className="hidden h-3.5 w-3.5 shrink-0 text-gray-300 sm:block" />
                         <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg ${
                             item.active ? 'bg-gray-100 text-gray-700' : 'bg-gray-50 text-gray-300'
                           }`}
                         >
-                          <Icon className="h-4 w-4" />
+                          {item.image_url ? (
+                            <img
+                              src={item.image_url}
+                              alt={item.name || 'Amenidad'}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <Icon className="h-4 w-4" />
+                          )}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className={`truncate text-sm ${item.active ? 'text-gray-800' : 'text-gray-400'}`}>

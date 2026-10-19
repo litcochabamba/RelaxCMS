@@ -4,6 +4,12 @@ import { CalendarDays, Loader2, MessageCircle, Tag } from 'lucide-react';
 import { useHotelConfig, useHotels, usePromotions } from '../../hooks/useQueries';
 import type { Hotel, Promotion } from '../../types';
 import { generateWhatsAppUrl } from '../../utils/helpers';
+import {
+  hasPromotionEnded,
+  isPromotionUpcoming,
+  promotionDateRangeLabel,
+  promotionDiscountLabel,
+} from '../../utils/promotions';
 
 const TYPE_LABELS: Record<Promotion['type'], string> = {
   discount: 'Descuento',
@@ -11,40 +17,6 @@ const TYPE_LABELS: Record<Promotion['type'], string> = {
   package: 'Paquete',
   seasonal: 'Temporada',
 };
-
-function formatDate(value: string | null) {
-  if (!value) return '';
-  const [year, month, day] = value.slice(0, 10).split('-');
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
-}
-
-function discountLabel(promotion: Promotion) {
-  if (promotion.discount_percent) {
-    const value = Number(promotion.discount_percent);
-    if (Number.isFinite(value) && value > 0) {
-      return `${value.toLocaleString('es-BO', { maximumFractionDigits: 1 })}% OFF`;
-    }
-  }
-  if (promotion.discount_amount) {
-    const value = Number(promotion.discount_amount);
-    if (Number.isFinite(value) && value > 0) {
-      return `Bs. ${value.toLocaleString('es-BO', { maximumFractionDigits: 0 })} menos`;
-    }
-  }
-  return '';
-}
-
-/** Una promoción sigue vigente si hoy cae dentro de su rango de fechas. */
-function isCurrent(promotion: Promotion) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const start = promotion.start_date ? new Date(`${promotion.start_date.slice(0, 10)}T00:00:00`) : null;
-  const end = promotion.end_date ? new Date(`${promotion.end_date.slice(0, 10)}T23:59:59`) : null;
-  if (start && today < start) return false;
-  if (end && today > end) return false;
-  return true;
-}
 
 function whatsappLink(phone: string, promotion?: Promotion) {
   if (!phone) return undefined;
@@ -76,8 +48,14 @@ export default function PromotionsPage() {
   const promotions = useMemo(() => {
     const list = (Array.isArray(promotionsData) ? promotionsData : []) as Promotion[];
     return list
-      .filter(isCurrent)
-      .sort((a, b) => String(b.start_date).localeCompare(String(a.start_date)));
+      .filter((promotion) => !hasPromotionEnded(promotion))
+      .sort((a, b) => {
+        // Las vigentes primero; las próximas se anuncian igual, con su fecha.
+        const upcomingA = isPromotionUpcoming(a);
+        const upcomingB = isPromotionUpcoming(b);
+        if (upcomingA !== upcomingB) return upcomingA ? 1 : -1;
+        return String(b.start_date).localeCompare(String(a.start_date));
+      });
   }, [promotionsData]);
 
   useEffect(() => {
@@ -125,7 +103,8 @@ export default function PromotionsPage() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {promotions.map((promotion, index) => {
-              const discount = discountLabel(promotion);
+              const discount = promotionDiscountLabel(promotion);
+              const upcoming = isPromotionUpcoming(promotion);
               const link = whatsappLink(whatsapp, promotion);
               return (
                 <motion.article
@@ -136,7 +115,7 @@ export default function PromotionsPage() {
                   transition={{ delay: index * 0.05 }}
                   className="flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_2px_12px_rgba(15,23,42,0.04)]"
                 >
-                  <div className="relative aspect-[16/10] bg-gray-100">
+                  <div className="relative aspect-square bg-gray-100">
                     {promotion.image_url ? (
                       <img
                         src={promotion.image_url}
@@ -150,8 +129,14 @@ export default function PromotionsPage() {
                       </div>
                     )}
                     <div className="absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-4">
-                      <span className="rounded-full bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-700 backdrop-blur">
-                        {TYPE_LABELS[promotion.type] || 'Promoción'}
+                      <span
+                        className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wider backdrop-blur ${
+                          upcoming
+                            ? 'bg-amber-50/95 text-amber-800'
+                            : 'bg-white/90 text-gray-700'
+                        }`}
+                      >
+                        {upcoming ? 'Próximamente' : TYPE_LABELS[promotion.type] || 'Promoción'}
                       </span>
                       {discount ? (
                         <span
@@ -167,7 +152,7 @@ export default function PromotionsPage() {
                   <div className="flex flex-1 flex-col p-5">
                     <h2 className="font-serif text-2xl text-gray-900">{promotion.title}</h2>
                     {promotion.description ? (
-                      <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-600">
+                      <p className="mt-2 flex-1 whitespace-pre-line text-sm leading-relaxed text-gray-600">
                         {promotion.description}
                       </p>
                     ) : (
@@ -177,7 +162,7 @@ export default function PromotionsPage() {
                     <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
                       <span className="inline-flex items-center gap-1.5">
                         <CalendarDays className="h-3.5 w-3.5" />
-                        {formatDate(promotion.start_date)} — {formatDate(promotion.end_date)}
+                        {promotionDateRangeLabel(promotion)}
                       </span>
                       {promotion.code ? (
                         <span className="rounded border border-dashed border-gray-300 px-2 py-0.5 font-mono text-[11px] text-gray-700">

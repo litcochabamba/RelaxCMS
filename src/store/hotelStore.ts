@@ -13,10 +13,10 @@ export const HOTEL_FALLBACKS = {
   whatsapp: '59162665925',
   phone: '+591 62665925',
   email: 'info@hotel.com',
-  address: 'Av. Principal #123, Cochabamba',
-  facebook: '',
-  instagram: '',
-  tiktok: '',
+  address: 'Av. Independencia, entre General Álvarez y 6 de Agosto, Cochabamba, Bolivia',
+  facebook: 'https://www.facebook.com/hostal.relax.ii/',
+  instagram: 'https://www.instagram.com/hostal_relax_ii/',
+  tiktok: 'https://www.tiktok.com/@hostal_relax',
 } as const;
 
 interface HotelDataState {

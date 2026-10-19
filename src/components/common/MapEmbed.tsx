@@ -9,7 +9,7 @@ interface MapEmbedProps {
 }
 
 /**
- * Pinta el mapa público (OpenStreetMap o Google) que se cargó desde el CMS.
+ * Pinta el mapa público de Google Maps que se cargó desde el CMS.
  * Si el enlace no se puede interpretar muestra una guía para corregirlo.
  */
 export default function MapEmbed({ link, title, interactive = true }: MapEmbedProps) {
@@ -25,7 +25,7 @@ export default function MapEmbed({ link, title, interactive = true }: MapEmbedPr
         <p className="text-[10px] leading-snug text-gray-400">
           {link?.trim()
             ? 'Abrí el enlace corto y copiá la URL completa o las coordenadas.'
-            : 'Pegá un enlace de Google Maps, OpenStreetMap o unas coordenadas.'}
+            : 'Pegá un enlace de Google Maps o unas coordenadas.'}
         </p>
       </div>
     );

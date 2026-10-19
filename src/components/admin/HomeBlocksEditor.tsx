@@ -19,6 +19,12 @@ import {
   defaultBlock,
   parseHomeBlocks,
 } from '../home/HomeBlocksSection';
+import {
+  MAX_PROMO_RIBBONS,
+  PROMO_RIBBON_PLACEMENTS,
+  parsePromoRibbonPlacements,
+  type PromoRibbonPlacement,
+} from '../../utils/promotions';
 import type { HomeBlock, HomeBlockPlacement } from '../../types';
 
 const PLACEMENTS = Object.keys(PLACEMENT_LABELS) as HomeBlockPlacement[];
@@ -27,14 +33,22 @@ interface HomeBlocksEditorProps {
   hotelId: string;
   /** Valor crudo de `configuracion_hotel.home_blocks`. */
   configValue?: string;
+  /** Valor crudo de `configuracion_hotel.promo_ribbon_placements`. */
+  ribbonConfig?: string;
 }
 
 let newBlockCounter = 0;
 
-export default function HomeBlocksEditor({ hotelId, configValue }: HomeBlocksEditorProps) {
+export default function HomeBlocksEditor({
+  hotelId,
+  configValue,
+  ribbonConfig,
+}: HomeBlocksEditorProps) {
   const upsertConfig = useUpsertHotelConfig();
   const parsed = useMemo(() => parseHomeBlocks(configValue), [configValue]);
+  const parsedRibbon = useMemo(() => parsePromoRibbonPlacements(ribbonConfig), [ribbonConfig]);
   const [blocks, setBlocks] = useState<HomeBlock[]>(parsed);
+  const [ribbonPlacements, setRibbonPlacements] = useState<PromoRibbonPlacement[]>(parsedRibbon);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -43,10 +57,30 @@ export default function HomeBlocksEditor({ hotelId, configValue }: HomeBlocksEdi
     setBlocks(parseHomeBlocks(configValue));
   }, [configValue]);
 
+  useEffect(() => {
+    setRibbonPlacements(parsePromoRibbonPlacements(ribbonConfig));
+  }, [ribbonConfig]);
+
   const dirty = useMemo(
     () => JSON.stringify(blocks) !== JSON.stringify(parsed),
     [blocks, parsed]
   );
+
+  const ribbonDirty = useMemo(
+    () => JSON.stringify(ribbonPlacements) !== JSON.stringify(parsedRibbon),
+    [ribbonPlacements, parsedRibbon]
+  );
+
+  const toggleRibbonPlacement = (placement: PromoRibbonPlacement) => {
+    setRibbonPlacements((current) => {
+      if (current.includes(placement)) return current.filter((item) => item !== placement);
+      if (current.length >= MAX_PROMO_RIBBONS) return current;
+      // Se mantiene el orden de la página, sin importar el orden de selección.
+      return PROMO_RIBBON_PLACEMENTS.filter(
+        (item) => current.includes(item) || item === placement
+      ) as PromoRibbonPlacement[];
+    });
+  };
 
   const update = (id: string, patch: Partial<HomeBlock>) =>
     setBlocks((current) => current.map((block) => (block.id === id ? { ...block, ...patch } : block)));
@@ -98,12 +132,22 @@ export default function HomeBlocksEditor({ hotelId, configValue }: HomeBlocksEdi
       return;
     }
     try {
-      await upsertConfig.mutateAsync({
-        hotelId,
-        key: 'home_blocks',
-        value: JSON.stringify(blocks),
-        group: 'sections',
-      });
+      if (dirty) {
+        await upsertConfig.mutateAsync({
+          hotelId,
+          key: 'home_blocks',
+          value: JSON.stringify(blocks),
+          group: 'sections',
+        });
+      }
+      if (ribbonDirty) {
+        await upsertConfig.mutateAsync({
+          hotelId,
+          key: 'promo_ribbon_placements',
+          value: JSON.stringify(ribbonPlacements),
+          group: 'sections',
+        });
+      }
       toast.success('Avisos y cintas actualizados');
     } catch (error) {
       toast.error(error instanceof Error && error.message ? error.message : 'No se pudo guardar');
@@ -117,7 +161,51 @@ export default function HomeBlocksEditor({ hotelId, configValue }: HomeBlocksEdi
       <p className="text-xs leading-relaxed text-gray-500">
         Bloques a todo el ancho que se insertan entre las secciones de la home. Los avisos llevan
         imagen de fondo, alto propio y botón; las cintas son franjas de texto que se desplazan.
+        El espacio debajo del hero queda reservado: el primer lugar disponible es después de
+        Información.
       </p>
+
+      <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3">
+        <div className="flex items-center gap-2">
+          <Megaphone className="h-4 w-4 text-gray-500" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+            Cinta de promociones
+          </p>
+          <span className="ml-auto text-[10px] text-gray-400">
+            {ribbonPlacements.length} de {MAX_PROMO_RIBBONS}
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+          La cinta automática con las promociones vigentes se repite hasta 3 veces entre
+          secciones. Elegí las ubicaciones; nunca aparece debajo de la hero.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {PROMO_RIBBON_PLACEMENTS.map((placement) => {
+            const selected = ribbonPlacements.includes(placement);
+            return (
+              <button
+                key={placement}
+                type="button"
+                onClick={() => toggleRibbonPlacement(placement)}
+                disabled={!selected && ribbonPlacements.length >= MAX_PROMO_RIBBONS}
+                aria-pressed={selected}
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  selected
+                    ? 'border-gray-900 bg-gray-900 text-white'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                }`}
+              >
+                {PLACEMENT_LABELS[placement as HomeBlockPlacement] || placement}
+              </button>
+            );
+          })}
+        </div>
+        {ribbonPlacements.length === 0 ? (
+          <p className="mt-2 text-[11px] text-amber-600">
+            Sin ubicaciones seleccionadas: la cinta no se mostrará.
+          </p>
+        ) : null}
+      </div>
 
       <div className="flex gap-2">
         <button
@@ -483,7 +571,7 @@ export default function HomeBlocksEditor({ hotelId, configValue }: HomeBlocksEdi
       <button
         type="button"
         onClick={() => void handleSave()}
-        disabled={upsertConfig.isPending || !dirty}
+        disabled={upsertConfig.isPending || (!dirty && !ribbonDirty)}
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 py-3 text-sm font-semibold uppercase tracking-wider text-white transition-colors hover:bg-gray-800 disabled:opacity-50"
       >
         {upsertConfig.isPending ? (
@@ -493,7 +581,7 @@ export default function HomeBlocksEditor({ hotelId, configValue }: HomeBlocksEdi
         )}
         Guardar avisos
       </button>
-      {dirty ? (
+      {dirty || ribbonDirty ? (
         <p className="text-center text-[11px] text-amber-600">Hay cambios sin guardar</p>
       ) : null}
     </div>

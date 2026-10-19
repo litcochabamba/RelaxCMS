@@ -215,6 +215,8 @@ export interface Amenity {
   name: string;
   icon: string | null;
   description: string | null;
+  /** Foto opcional de la amenidad; se muestra dentro de la tarjeta. */
+  image_url: string | null;
   category: string;
   value: string | null;
   order: number;
@@ -327,9 +329,9 @@ export interface Promotion {
 // Se guardan como JSON en `configuracion_hotel` (clave `home_blocks`).
 export type HomeBlockKind = 'aviso' | 'cinta';
 
+// El espacio entre el hero y la sección de Información queda reservado (barra
+// de disponibilidad): los avisos y cintas empiezan después de Información.
 export type HomeBlockPlacement =
-  | 'hero'
-  | 'availability'
   | 'showcase'
   | 'amenities'
   | 'rooms'

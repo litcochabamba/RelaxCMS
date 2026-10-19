@@ -1,5 +1,5 @@
 import { ExternalLink, MapPin } from 'lucide-react';
-import { osmEmbedUrl } from '../../utils/mapEmbed';
+import { googleDirectionsLink, googleEmbedUrl } from '../../utils/mapEmbed';
 
 interface AttractionMapProps {
   title: string;
@@ -26,13 +26,9 @@ function readCoordinates(
   return { lat: latitude, lng: longitude };
 }
 
-function mapsLink(query: string): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-}
-
 /**
- * Mapa de la ubicación del atractivo activo. Usa el visor público de
- * OpenStreetMap (sin API key) y un enlace externo para obtener la ruta.
+ * Mapa de la ubicación del atractivo activo. Usa el visor público de Google
+ * Maps (sin API key) y un enlace externo de Google para obtener la ruta.
  */
 export default function AttractionMap({
   title,
@@ -43,7 +39,7 @@ export default function AttractionMap({
 }: AttractionMapProps) {
   const place = location || title;
   const coords = readCoordinates(latitude, longitude);
-  const externalUrl = mapsLink(coords ? `${coords.lat},${coords.lng}` : place);
+  const externalUrl = googleDirectionsLink(coords || place);
 
   return (
     <div
@@ -53,7 +49,7 @@ export default function AttractionMap({
         <iframe
           key={`${coords.lat},${coords.lng}`}
           title={`Mapa de ${title}`}
-          src={osmEmbedUrl(coords.lat, coords.lng)}
+          src={googleEmbedUrl(coords.lat, coords.lng)}
           className="h-full w-full border-0"
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"

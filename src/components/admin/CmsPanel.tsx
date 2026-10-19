@@ -9,11 +9,10 @@ import {
   useHeroSlides, useUpdateHeroSlides, useCreateHeroSlide, useDeleteHeroSlide, useSeedHeroSlides,
   useHotelConfig, useUpsertHotelConfig,
   useBookingRoomTypes, useUpdateBookingRoomType, useCreateBookingRoomType, useDeleteBookingRoomType,
-  useComments, useGallery, useCreateGalleryItem, useUpdateGalleryItem, useDeleteGalleryItem,
+  useComments,
   useAttractionsWithImages,
 } from '../../hooks/useQueries';
 import HeroMediaPicker, { SlideMediaPreview, type HeroMediaField } from './HeroMediaPicker';import ImageFolderPicker from './ImageFolderPicker';
-import ImageUploadButton from './ImageUploadButton';
 import AmenitiesEditor, { type AmenitiesEditorHandle } from './AmenitiesEditor';
 import HomeBlocksEditor from './HomeBlocksEditor';
 import AttractionsEditor, { type AttractionsEditorHandle } from './AttractionsEditor';
@@ -31,7 +30,7 @@ import {
 import { DEMO_HERO_SLIDES } from '../../utils/seedData';
 import { parseHeroOffsetX } from '../home/HeroSection';
 import toast from 'react-hot-toast';
-import type { Attraction, AttractionImage, GalleryItem, HeroSlide, Hotel, Room, RoomCategory } from '../../types';
+import type { Attraction, AttractionImage, HeroSlide, Hotel, Room, RoomCategory } from '../../types';
 import {
   Palette,
   Info,
@@ -80,7 +79,6 @@ const sections: SectionDefinition[] = [
   { id: 'blocks', label: 'Avisos y cintas', Icon: Megaphone, page: 'home' },
   { id: 'gallery_header', label: 'Encabezado', Icon: Info, page: 'gallery' },
   { id: 'inventory', label: 'Tipos y unidades', Icon: BedDouble, page: 'gallery' },
-  { id: 'gallery', label: 'Galería', Icon: ImageIcon, page: 'gallery' },
   { id: 'promotions_header', label: 'Encabezado', Icon: Megaphone, page: 'promotions' },
   { id: 'contact', label: 'Contacto', Icon: Phone, page: 'contact' },
   { id: 'colors', label: 'Colores', Icon: Palette, page: 'global' },
@@ -173,9 +171,10 @@ export default function CmsPanel() {
   );
   const homeBlocksConfig =
     (hotelConfigs as ConfigEntry[]).find((config) => config.key === 'home_blocks')?.value || '';
+  const promoRibbonConfig =
+    (hotelConfigs as ConfigEntry[]).find((config) => config.key === 'promo_ribbon_placements')?.value ||
+    '';
   const { data: dbComments = [] } = useComments(hotelId);
-  const { data: galleryData, isLoading: galleryLoading } = useGallery(hotelId);
-  const galleryItems = (Array.isArray(galleryData) ? galleryData : []) as GalleryItem[];
 
   const updateHotel = useUpdateHotel();
   const updateRoom = useUpdateRoom();
@@ -187,9 +186,6 @@ export default function CmsPanel() {
   const updateBRT = useUpdateBookingRoomType();
   const createBRT = useCreateBookingRoomType();
   const deleteBRT = useDeleteBookingRoomType();
-  const createGalleryItem = useCreateGalleryItem();
-  const updateGalleryItem = useUpdateGalleryItem();
-  const deleteGalleryItem = useDeleteGalleryItem();
 
   const [editingHotel, setEditingHotel] = useState<Record<string, string>>({});
   const [logoUploading, setLogoUploading] = useState(false);
@@ -215,17 +211,6 @@ export default function CmsPanel() {
   const [heroOffsetX, setHeroOffsetX] = useState('0');
   const [infoSets, setInfoSets] = useState<ShowcaseImageSet[]>(DEFAULT_INFO_IMAGE_SETS);
   const [infoPickerSlot, setInfoPickerSlot] = useState<Record<string, 'main' | 'secondary'>>({});
-
-  // Gallery state
-  const [editingGalleryId, setEditingGalleryId] = useState<string | null>(null);
-  const [editingGallery, setEditingGallery] = useState<Record<string, string>>({});
-  const [showNewGalleryForm, setShowNewGalleryForm] = useState(false);
-  const [newGalleryItem, setNewGalleryItem] = useState({
-    image_url: '',
-    title: '',
-    category: '',
-    description: '',
-  });
 
   // Vista previa en vivo del desplazamiento del hero: el slider escribe una
   // variable CSS que HeroSection usa mientras el panel está abierto.
@@ -601,75 +586,6 @@ export default function CmsPanel() {
 
   const removeInfoSet = (index: number) => {
     setInfoSets((prev) => prev.filter((_, position) => position !== index));
-  };
-
-  // Gallery handlers
-  const startEditGalleryItem = (item: GalleryItem) => {
-    setEditingGalleryId(item.id);
-    setEditingGallery({
-      image_url: item.image_url,
-      title: item.title || '',
-      category: item.category || '',
-      description: item.description || '',
-      alt_text: item.alt_text || '',
-    });
-  };
-
-  const handleSaveGalleryItem = async () => {
-    if (!editingGalleryId) return;
-    if (!editingGallery.image_url?.trim()) {
-      toast.error('La imagen es requerida');
-      return;
-    }
-    try {
-      await updateGalleryItem.mutateAsync({
-        id: editingGalleryId,
-        data: {
-          image_url: editingGallery.image_url.trim(),
-          title: editingGallery.title || null,
-          category: editingGallery.category || 'General',
-          description: editingGallery.description || null,
-          alt_text: editingGallery.alt_text || editingGallery.title || null,
-        },
-      });
-      setEditingGalleryId(null);
-      toast.success('Imagen actualizada');
-    } catch {
-      toast.error('Error al guardar imagen');
-    }
-  };
-
-  const handleCreateGalleryItem = async () => {
-    if (!hotelId) return;
-    if (!newGalleryItem.image_url.trim()) {
-      toast.error('Elegí una imagen o pegá una URL');
-      return;
-    }
-    try {
-      await createGalleryItem.mutateAsync({
-        hotel_id: hotelId,
-        image_url: newGalleryItem.image_url.trim(),
-        title: newGalleryItem.title || null,
-        category: newGalleryItem.category || 'General',
-        description: newGalleryItem.description || null,
-        alt_text: newGalleryItem.title || null,
-        order: galleryItems.length,
-      });
-      setShowNewGalleryForm(false);
-      setNewGalleryItem({ image_url: '', title: '', category: '', description: '' });
-      toast.success('Imagen agregada');
-    } catch {
-      toast.error('Error al agregar imagen');
-    }
-  };
-
-  const handleDeleteGalleryItem = async (id: string) => {
-    try {
-      await deleteGalleryItem.mutateAsync(id);
-      toast.success('Imagen eliminada');
-    } catch {
-      toast.error('Error al eliminar imagen');
-    }
   };
 
   const renderSectionButton = (section: SectionDefinition) => {
@@ -1538,8 +1454,8 @@ export default function CmsPanel() {
 
                           <p className="text-[11px] text-gray-400 -mt-1 mb-2">
                             Cada espacio puede ser Imagen o Mapa. Para el mapa pegá la URL completa de Google
-                            Maps u OpenStreetMap, o coordenadas (lat, lng). Los enlaces cortos
-                            maps.app.goo.gl no se pueden leer.
+                            Maps o coordenadas (lat, lng). Los enlaces cortos maps.app.goo.gl no se pueden
+                            leer.
                           </p>
 
                           <div className="space-y-3">
@@ -1656,7 +1572,7 @@ export default function CmsPanel() {
                                                 {!mapLink.trim()
                                                   ? 'Pegá un enlace o coordenadas'
                                                   : resolved
-                                                    ? `Mapa listo (${resolved.provider === 'osm' ? 'OpenStreetMap' : 'Google'})`
+                                                    ? 'Mapa listo (Google Maps)'
                                                     : 'Enlace no reconocido: usá la URL completa o lat, lng'}
                                               </p>
                                             </>
@@ -2140,236 +2056,13 @@ export default function CmsPanel() {
                       <RoomInventoryEditor hotelId={hotelId} />
                     )}
 
-                    {/* Gallery section editor */}
-                    {activeSection === 'gallery' && (
-                      <div className="space-y-4">
-                        <button
-                          onClick={() => setShowNewGalleryForm(!showNewGalleryForm)}
-                          className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-500 hover:border-gray-900 hover:text-gray-900 transition-all"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span className="text-sm font-medium">Agregar imagen</span>
-                        </button>
-
-                        <AnimatePresence>
-                          {showNewGalleryForm && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="overflow-hidden"
-                            >
-                              <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-gray-50">
-                                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Nueva imagen</p>
-
-                                <div className="aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                                  {newGalleryItem.image_url ? (
-                                    <img src={newGalleryItem.image_url} alt="Vista previa" className="w-full h-full object-cover" />
-                                  ) : (
-                                    <span className="text-[10px] text-gray-400">Sin archivo</span>
-                                  )}
-                                </div>
-
-                                <ImageFolderPicker
-                                  selectedUrl={newGalleryItem.image_url}
-                                  onSelect={(url) => setNewGalleryItem({ ...newGalleryItem, image_url: url })}
-                                />
-
-                                <div>
-                                  <div className="mb-1 flex items-center justify-between gap-2">
-                                    <label className="block text-sm font-medium text-gray-700">Imagen URL</label>
-                                    <ImageUploadButton
-                                      onUploaded={(url) => setNewGalleryItem({ ...newGalleryItem, image_url: url })}
-                                    />
-                                  </div>
-                                  <input
-                                    type="url"
-                                    value={newGalleryItem.image_url}
-                                    onChange={(e) => setNewGalleryItem({ ...newGalleryItem, image_url: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    placeholder="https://..."
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
-                                  <input
-                                    type="text"
-                                    value={newGalleryItem.title}
-                                    onChange={(e) => setNewGalleryItem({ ...newGalleryItem, title: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    placeholder="Lobby Principal"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                                  <input
-                                    type="text"
-                                    value={newGalleryItem.category}
-                                    onChange={(e) => setNewGalleryItem({ ...newGalleryItem, category: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    placeholder="Habitaciones, Exteriores..."
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                                  <textarea
-                                    rows={2}
-                                    value={newGalleryItem.description}
-                                    onChange={(e) => setNewGalleryItem({ ...newGalleryItem, description: e.target.value })}
-                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
-                                    placeholder="Texto opcional"
-                                  />
-                                </div>
-                                <div className="flex gap-2 pt-1">
-                                  <button
-                                    onClick={handleCreateGalleryItem}
-                                    disabled={createGalleryItem.isPending || !newGalleryItem.image_url.trim()}
-                                    className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
-                                  >
-                                    {createGalleryItem.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                    Crear
-                                  </button>
-                                  <button
-                                    onClick={() => setShowNewGalleryForm(false)}
-                                    className="flex items-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
-                                  >
-                                    <X className="w-4 h-4" />
-                                    Cancelar
-                                  </button>
-                                </div>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        {galleryLoading ? (
-                          <div className="flex items-center justify-center py-8">
-                            <Loader2 className="animate-spin h-6 w-6 text-gray-400" />
-                            <span className="ml-2 text-sm text-gray-500">Cargando galería...</span>
-                          </div>
-                        ) : galleryItems.length === 0 ? (
-                          <div className="text-center py-8">
-                            <ImageIcon className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                            <p className="text-sm text-gray-500">No hay imágenes guardadas</p>
-                            <p className="text-xs text-gray-400 mt-1">Agregalas desde public/gallery o por URL</p>
-                          </div>
-                        ) : (
-                          galleryItems.map((item) => (
-                            <div key={item.id} className="border border-gray-100 rounded-xl overflow-hidden">
-                              {editingGalleryId === item.id ? (
-                                <div className="p-4 space-y-3">
-                                  <div className="aspect-[4/3] rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                                    {editingGallery.image_url ? (
-                                      <img src={editingGallery.image_url} alt="Vista previa" className="w-full h-full object-cover" />
-                                    ) : (
-                                      <span className="text-[10px] text-gray-400">Sin archivo</span>
-                                    )}
-                                  </div>
-
-                                  <ImageFolderPicker
-                                    selectedUrl={editingGallery.image_url}
-                                    onSelect={(url) => setEditingGallery({ ...editingGallery, image_url: url })}
-                                  />
-
-                                  <div>
-                                    <div className="mb-1 flex items-center justify-between gap-2">
-                                      <label className="block text-sm font-medium text-gray-700">Imagen URL</label>
-                                      <ImageUploadButton
-                                        onUploaded={(url) => setEditingGallery({ ...editingGallery, image_url: url })}
-                                      />
-                                    </div>
-                                    <input
-                                      type="url"
-                                      value={editingGallery.image_url || ''}
-                                      onChange={(e) => setEditingGallery({ ...editingGallery, image_url: e.target.value })}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
-                                    <input
-                                      type="text"
-                                      value={editingGallery.title || ''}
-                                      onChange={(e) => setEditingGallery({ ...editingGallery, title: e.target.value })}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                                    <input
-                                      type="text"
-                                      value={editingGallery.category || ''}
-                                      onChange={(e) => setEditingGallery({ ...editingGallery, category: e.target.value })}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                                    <textarea
-                                      rows={2}
-                                      value={editingGallery.description || ''}
-                                      onChange={(e) => setEditingGallery({ ...editingGallery, description: e.target.value })}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
-                                    />
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={handleSaveGalleryItem}
-                                      disabled={updateGalleryItem.isPending}
-                                      className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors disabled:opacity-50"
-                                    >
-                                      {updateGalleryItem.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                      Guardar
-                                    </button>
-                                    <button
-                                      onClick={() => setEditingGalleryId(null)}
-                                      className="flex items-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
-                                    >
-                                      <X className="w-4 h-4" />
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-3 p-3">
-                                  <div className="w-20 h-14 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
-                                    <img src={item.image_url} alt={item.title || 'Imagen'} className="w-full h-full object-cover" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-gray-900 truncate">{item.title || 'Sin título'}</p>
-                                    <p className="text-xs text-gray-500 truncate">{item.category || 'General'}</p>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={() => startEditGalleryItem(item)}
-                                      className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors"
-                                    >
-                                      <Edit3 className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteGalleryItem(item.id)}
-                                      className="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))
-                        )}
-
-                        {galleryItems.length > 0 && (
-                          <p className="text-xs text-gray-400 text-center pt-2">
-                            {galleryItems.length} imagen{galleryItems.length !== 1 ? 'es' : ''} · Se muestran en el orden listado
-                          </p>
-                        )}
-                      </div>
-                    )}
-
                     {/* Avisos y cintas entre secciones (home) */}
                     {activeSection === 'blocks' && (
-                      <HomeBlocksEditor hotelId={hotelId} configValue={homeBlocksConfig} />
+                      <HomeBlocksEditor
+                        hotelId={hotelId}
+                        configValue={homeBlocksConfig}
+                        ribbonConfig={promoRibbonConfig}
+                      />
                     )}
 
                     {['colors', 'settings', 'info', 'booking', 'amenities', 'rooms', 'contact', 'attractions', 'comments', 'gallery_header', 'promotions_header'].includes(activeSection || '') && (

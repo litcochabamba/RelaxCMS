@@ -1,10 +1,10 @@
 /**
- * Convierte un enlace pegado en el CMS (Google Maps, OpenStreetMap, un embed
- * ya armado o un par de coordenadas) en una URL segura para un <iframe>.
+ * Convierte un enlace pegado en el CMS (Google Maps, un embed ya armado o un
+ * par de coordenadas) en una URL segura para un <iframe>.
  *
- * No usa API keys: Google se resuelve con su visor `output=embed` y las
- * coordenadas se pintan con el visor público de OpenStreetMap, igual que el
- * mapa de los atractivos.
+ * Todos los mapas se dibujan con el visor público de Google Maps
+ * (`output=embed`), sin API key. Los enlaces de OpenStreetMap que ya estén
+ * guardados se convierten a Google usando sus coordenadas.
  */
 
 export interface MapCoordinates {
@@ -15,7 +15,7 @@ export interface MapCoordinates {
 export interface ResolvedMapEmbed {
   src: string;
   externalUrl: string;
-  provider: 'osm' | 'google';
+  provider: 'google';
   coords?: MapCoordinates;
 }
 
@@ -49,7 +49,8 @@ function toCoordinates(latValue: string, lngValue: string): MapCoordinates | nul
 
 /** Busca coordenadas en texto libre, enlaces de Google Maps u OSM. */
 export function parseMapCoordinates(input: string): MapCoordinates | null {
-  const value = input.trim();
+  // Los enlaces guardados suelen traer la coma codificada como %2C.
+  const value = input.trim().replace(/%2c/gi, ',');
   if (!value) return null;
 
   for (const pattern of COORDINATE_PATTERNS) {
@@ -66,24 +67,19 @@ export function parseMapCoordinates(input: string): MapCoordinates | null {
   return inverted ? toCoordinates(inverted[2], inverted[1]) : null;
 }
 
-/** Visor público de OpenStreetMap centrado en las coordenadas. */
-export function osmEmbedUrl(latitude: number, longitude: number): string {
-  // Vista de ~2 km de alto, manteniendo la proporción en longitud según la latitud.
-  const latDelta = 0.012;
-  const cos = Math.max(Math.cos((latitude * Math.PI) / 180), 0.2);
-  const lngDelta = latDelta / cos;
-  const bbox = [
-    longitude - lngDelta,
-    latitude - latDelta,
-    longitude + lngDelta,
-    latitude + latDelta,
-  ]
-    .map((value) => value.toFixed(5))
-    .join('%2C');
+/** Visor público de Google Maps centrado en las coordenadas. */
+export function googleEmbedUrl(latitude: number, longitude: number, zoom = 16): string {
+  const lat = latitude.toFixed(5);
+  const lng = longitude.toFixed(5);
+  return `https://maps.google.com/maps?q=${lat}%2C${lng}&z=${zoom}&hl=es&output=embed`;
+}
 
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${latitude.toFixed(
-    5
-  )}%2C${longitude.toFixed(5)}`;
+function googleSearchUrl(query: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function googleDirectionsUrl(destination: string): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
 }
 
 function safeHost(input: string): string {
@@ -108,6 +104,19 @@ function isGoogleMapsHost(host: string): boolean {
 
 function isShortGoogleLink(host: string): boolean {
   return host === 'maps.app.goo.gl' || host === 'goo.gl' || host === 'g.co';
+}
+
+/** Centro del `bbox` de un embed de OpenStreetMap guardado. */
+function osmBboxCenter(value: string): MapCoordinates | null {
+  try {
+    const bbox = new URL(value).searchParams.get('bbox');
+    if (!bbox) return null;
+    const [minLng, minLat, maxLng, maxLat] = bbox.split(',').map(Number);
+    if (![minLng, minLat, maxLng, maxLat].every(Number.isFinite)) return null;
+    return toCoordinates(String((minLat + maxLat) / 2), String((minLng + maxLng) / 2));
+  } catch {
+    return null;
+  }
 }
 
 /** Extrae el texto de un enlace de Google Maps cuando no trae coordenadas. */
@@ -137,6 +146,17 @@ function googlePlaceQuery(input: string): string | null {
   }
 }
 
+function googleResult(coords: MapCoordinates): ResolvedMapEmbed {
+  const query = `${coords.lat},${coords.lng}`;
+  return {
+    src: googleEmbedUrl(coords.lat, coords.lng),
+    // El enlace externo lleva a la ficha del lugar; "Cómo llegar" usa dir/.
+    externalUrl: googleSearchUrl(query),
+    provider: 'google',
+    coords,
+  };
+}
+
 /**
  * Devuelve la URL del iframe y un enlace externo. `null` cuando el enlace no
  * se puede interpretar (por ejemplo los enlaces cortos maps.app.goo.gl, que
@@ -149,39 +169,20 @@ export function resolveMapEmbed(input: string): ResolvedMapEmbed | null {
   const host = safeHost(value);
   const looksLikeUrl = /^https?:\/\//i.test(value);
 
-  // Embed de OpenStreetMap ya armado.
-  if (isOsmHost(host) && value.includes('/export/embed')) {
-    const coords = parseMapCoordinates(value);
-    return {
-      src: value,
-      externalUrl: coords
-        ? `https://www.openstreetmap.org/?mlat=${coords.lat}&mlon=${coords.lng}#map=16/${coords.lat}/${coords.lng}`
-        : 'https://www.openstreetmap.org/',
-      provider: 'osm',
-      coords: coords || undefined,
-    };
+  // Enlaces de OpenStreetMap guardados: se convierten a Google con sus
+  // coordenadas (o con el centro del bbox si es un embed).
+  if (isOsmHost(host)) {
+    const coords = parseMapCoordinates(value) || osmBboxCenter(value);
+    return coords ? googleResult(coords) : null;
   }
 
-  // Embed de Google Maps ya armado.
-  if (
-    isGoogleMapsHost(host) &&
-    (value.includes('/maps/embed') || /[?&]output=embed/i.test(value))
-  ) {
+  // Embed de Google ya armado ("Compartir > Insertar mapa").
+  if (isGoogleMapsHost(host) && value.includes('/maps/embed')) {
     return {
       src: value,
-      externalUrl: value.replace(/([?&])output=embed(&|$)/i, '$1').replace(/[?&]$/, ''),
+      externalUrl: 'https://www.google.com/maps',
       provider: 'google',
       coords: parseMapCoordinates(value) || undefined,
-    };
-  }
-
-  const coords = parseMapCoordinates(value);
-  if (coords) {
-    return {
-      src: osmEmbedUrl(coords.lat, coords.lng),
-      externalUrl: `https://www.openstreetmap.org/?mlat=${coords.lat}&mlon=${coords.lng}#map=16/${coords.lat}/${coords.lng}`,
-      provider: 'osm',
-      coords,
     };
   }
 
@@ -190,12 +191,25 @@ export function resolveMapEmbed(input: string): ResolvedMapEmbed | null {
 
   if (looksLikeUrl && !isGoogleMapsHost(host)) return null;
 
+  const coords = parseMapCoordinates(value);
+  if (coords) return googleResult(coords);
+
   const query = googlePlaceQuery(value);
   if (!query) return null;
 
   return {
     src: `https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&hl=es&output=embed`,
-    externalUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`,
+    externalUrl: googleSearchUrl(query),
     provider: 'google',
   };
+}
+
+/** Enlace externo de Google Maps para "Cómo llegar". */
+export function googleDirectionsLink(
+  destination: MapCoordinates | string | null | undefined
+): string {
+  if (!destination) return 'https://www.google.com/maps';
+  const query =
+    typeof destination === 'string' ? destination : `${destination.lat},${destination.lng}`;
+  return googleDirectionsUrl(query);
 }
