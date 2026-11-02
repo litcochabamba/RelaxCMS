@@ -260,7 +260,7 @@ async function apply(env: Env, hotelId: string, overwriteNames: boolean): Promis
   return json({ data: result, error: null });
 }
 
-async function handle(request: Request, env: Env): Promise<Response> {
+async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
 
   if (request.method === 'GET') {
@@ -279,6 +279,26 @@ async function handle(request: Request, env: Env): Promise<Response> {
   }
 
   return json({ error: 'Método no permitido' }, 405);
+}
+
+/**
+ * `route` puede lanzar (una consulta inesperada, un error de red). Sin este
+ * envoltorio el runtime devuelve un 502 sin cuerpo y el panel sólo muestra
+ * «no se pudo»; así llega un JSON con el motivo real.
+ */
+async function handle(request: Request, env: Env): Promise<Response> {
+  try {
+    return await route(request, env);
+  } catch (error) {
+    console.error('[pms-import] error no controlado:', error);
+    return json(
+      {
+        error: 'La importación falló en el servidor.',
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      500
+    );
+  }
 }
 
 export const onRequest = ({ request, env }: { request: Request; env: Env }) => handle(request, env);

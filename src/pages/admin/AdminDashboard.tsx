@@ -520,6 +520,33 @@ function RoomsSection() {
   );
 }
 
+/**
+ * Mensaje de error con el detalle real de la respuesta.
+ *
+ * El servidor manda `{ error }` cuando puede. Si la respuesta llega sin JSON
+ * (un 502 del edge, un HTML o un cuerpo vacío), se muestra el status y el
+ * texto crudo: sin eso el panel sólo puede decir «no se pudo» y no queda forma
+ * de saber qué falló.
+ */
+async function readErrorDetail(response: Response, fallback: string): Promise<string> {
+  const raw = await response.text().catch(() => '');
+  let message = '';
+
+  try {
+    const parsed = raw ? (JSON.parse(raw) as { error?: unknown; detail?: unknown }) : null;
+    const error = typeof parsed?.error === 'string' ? parsed.error.trim() : '';
+    const detail = typeof parsed?.detail === 'string' ? parsed.detail.trim() : '';
+    message = [error, detail].filter(Boolean).join(' — ');
+  } catch {
+    // HTML o texto plano (por ejemplo el 502 del edge): se limpia para el aviso.
+    message = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  if (message.length > 300) message = message.slice(0, 300) + '…';
+  const status = 'HTTP ' + response.status + (response.statusText ? ' ' + response.statusText : '');
+  return message ? fallback + '. ' + message + ' (' + status + ')' : fallback + ' (' + status + ')';
+}
+
 interface PmsImportPreview {
   pms: {
     types: number;
@@ -577,10 +604,12 @@ function PmsImportDialog({
       const response = await sessionFetch(
         `${import.meta.env.BASE_URL}api/admin/pms-import?hotel_id=${encodeURIComponent(hotelId)}`
       );
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response, 'No se pudo leer el catálogo del PMS'));
+      }
       const body = (await response.json().catch(() => null)) as
-        | { data?: PmsImportPreview | null; error?: string | null }
+        | { data?: PmsImportPreview | null }
         | null;
-      if (!response.ok) throw new Error(body?.error || 'No se pudo leer el catálogo del PMS');
       setPreview(body?.data ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo leer el catálogo del PMS');
@@ -604,6 +633,9 @@ function PmsImportDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hotel_id: hotelId, overwrite_names: overwriteNames }),
       });
+      if (!response.ok) {
+        throw new Error(await readErrorDetail(response, 'No se pudo aplicar la importación'));
+      }
       const body = (await response.json().catch(() => null)) as
         | {
             data?: {
@@ -614,10 +646,8 @@ function PmsImportDialog({
               disabled_units?: number;
               errors: string[];
             } | null;
-            error?: string | null;
           }
         | null;
-      if (!response.ok) throw new Error(body?.error || 'No se pudo aplicar la importación');
 
       const data = body?.data;
       if (data?.errors?.length) {
@@ -677,7 +707,7 @@ function PmsImportDialog({
             </div>
           ) : error ? (
             <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="whitespace-pre-wrap break-words text-sm text-red-700">{error}</p>
               <button
                 type="button"
                 onClick={() => void load()}
