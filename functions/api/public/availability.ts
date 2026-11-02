@@ -1,4 +1,4 @@
-import { json, type Env } from '../../_lib/env';
+import { json, readSession, type Env } from '../../_lib/env';
 import { serviceRequest } from '../../_lib/supabase';
 import {
   fetchPmsOccupiedRooms,
@@ -41,9 +41,19 @@ export async function handlePublicAvailability(
   if (inTime === null || outTime === null) return json({ error: 'Fechas no válidas' }, 400);
   if (outTime <= inTime) return json({ error: 'El rango de fechas no es válido' }, 400);
 
-  // `detail=1` agrega las fechas de cada estadía. La galería lo usa para
-  // mostrar cuándo está ocupada una unidad sin exponer al huésped.
+  /*
+   * `detail=1` agrega las fechas de cada estadía. Son dato interno: saber
+   * cuándo entra y sale un huésped permite saber cuándo la habitación queda
+   * sola, así que solo las recibe el personal del CMS. Un visitante o un
+   * cliente registrado obtiene igual la lista de unidades ocupadas, sin
+   * fechas, que es todo lo que necesita la galería pública.
+   */
   const detail = params.get('detail') === '1';
+  let canSeeRanges = false;
+  if (detail) {
+    const session = await readSession(env, request);
+    canSeeRanges = session?.role === 'admin' || session?.role === 'moderator';
+  }
 
   // Dos estadías se solapan si una entra antes de que la otra salga y sale
   // después de que la otra entra. En paralelo se pregunta al PMS por las
@@ -92,7 +102,7 @@ export async function handlePublicAvailability(
 
   const rooms = Array.from(new Set(ranges.map((range) => range.room_type).filter(Boolean)));
 
-  if (!detail) return json({ data: { rooms }, error: null });
+  if (!canSeeRanges) return json({ data: { rooms }, error: null });
 
   return json({ data: { rooms, ranges: ranges.slice(0, 500) }, error: null });
 }

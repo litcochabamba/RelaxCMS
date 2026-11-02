@@ -209,7 +209,11 @@ export function useRoomAvailabilityRanges(
         check_out: checkOut,
         detail: '1',
       });
-      const response = await fetch(`${import.meta.env.BASE_URL}api/public/availability?${params}`);
+      // Con la cookie de sesión el servidor reconoce al personal y manda las
+      // fechas; sin ella devuelve solo las unidades ocupadas.
+      const response = await fetch(`${import.meta.env.BASE_URL}api/public/availability?${params}`, {
+        credentials: 'include',
+      });
       const body = (await response.json().catch(() => null)) as
         | { data?: { rooms?: string[] | null; ranges?: OccupiedRange[] | null } | null; error?: string | null }
         | null;

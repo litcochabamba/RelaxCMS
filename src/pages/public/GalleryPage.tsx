@@ -108,22 +108,31 @@ interface UnitCardProps {
   unit: RoomUnit;
   singular: string;
   showNumber: boolean;
-  /** Fechas en que esta unidad ya está tomada (pendiente o confirmada). */
+  /** Fechas en que está tomada. Vacío si quien mira no es personal del hotel. */
   occupied: Array<{ check_in: string; check_out: string }>;
+  /** Ocupación sin fechas: el servidor la informa a cualquier visitante. */
+  busy: boolean;
   price: number | null;
   onReserve: () => void;
 }
 
-function UnitCard({ unit, singular, showNumber, occupied, price, onReserve }: UnitCardProps) {
+function UnitCard({
+  unit,
+  singular,
+  showNumber,
+  occupied,
+  busy,
+  price,
+  onReserve,
+}: UnitCardProps) {
   const number = unitNumber(unit.name);
-  const busy = occupied.length > 0;
   const nextRange = occupied[0] ?? null;
 
   return (
     <div
       className={`flex h-full flex-col rounded-2xl border p-4 transition-colors ${
         busy
-          ? 'border-gray-100 bg-gray-50/70'
+          ? 'border-red-200/80 bg-red-50/40'
           : 'border-gray-100 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
       }`}
     >
@@ -158,18 +167,24 @@ function UnitCard({ unit, singular, showNumber, occupied, price, onReserve }: Un
       ) : null}
 
       {/*
-       * Ocupación real de estas fechas: las pendientes también bloquean la
-       * unidad, igual que en el formulario de reserva. Se muestran las fechas
-       * tomadas, nunca quién las reservó.
+       * Ocupación real: las pendientes también bloquean la unidad, igual que
+       * en el formulario de reserva. El badge lo ve cualquiera, pero las fechas
+       * solo llegan con sesión de personal: publicarlas revela cuándo entra y
+       * sale un huésped y cuándo la habitación queda sola.
        */}
       {busy ? (
-        <p className="mt-3 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-800">
-          <CalendarDays className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={1.8} />
-          <span>
-            {nextRange ? rangeLabel(nextRange) : 'Ocupada'}
-            {occupied.length > 1 ? ` · ${occupied.length} estadías` : ''}
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-900 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+            <CalendarDays className="h-3 w-3" strokeWidth={2} />
+            Ocupada
           </span>
-        </p>
+          {nextRange ? (
+            <span className="text-[11px] leading-snug text-red-900/70">
+              {rangeLabel(nextRange)}
+              {occupied.length > 1 ? ` · ${occupied.length} estadías` : ''}
+            </span>
+          ) : null}
+        </div>
       ) : null}
 
       <div className="mt-auto pt-4">
@@ -203,6 +218,7 @@ interface TypeCardProps {
   isOpen: boolean;
   onToggle: () => void;
   occupiedByUnit: (unit: RoomUnit) => Array<{ check_in: string; check_out: string }>;
+  isBusy: (unit: RoomUnit) => boolean;
   onReserve: (unit: RoomUnit) => void;
 }
 
@@ -214,11 +230,12 @@ function TypeCard({
   isOpen,
   onToggle,
   occupiedByUnit,
+  isBusy,
   onReserve,
 }: TypeCardProps) {
   const price = formatPrice(type.price);
   const capacity = capacityLabel(type);
-  const freeCount = units.filter((unit) => occupiedByUnit(unit).length === 0).length;
+  const freeCount = units.filter((unit) => !isBusy(unit)).length;
   const features = useMemo(() => {
     const counts = new Map<string, number>();
     units.forEach((unit) =>
@@ -348,6 +365,7 @@ function TypeCard({
                     singular={singular}
                     showNumber={showNumbers}
                     occupied={occupiedByUnit(unit)}
+                    busy={isBusy(unit)}
                     price={type.price ?? null}
                     onReserve={() => onReserve(unit)}
                   />
@@ -681,11 +699,23 @@ export default function GalleryPage() {
   const horizon = isoDaysFromNow(90);
   const { data: availability } = useRoomAvailabilityRanges(hotelId, today, horizon);
   const ranges = availability?.ranges ?? [];
+  const occupiedLabels = availability?.rooms ?? [];
 
   const occupiedByUnit = useCallback(
     (type: RoomTypeInventory, unit: RoomUnit) =>
       ranges.filter((range) => range.room_type === `${type.name} · ${roomUnitLabel(type, unit)}`),
     [ranges]
+  );
+
+  /*
+   * La unidad ocupada se sabe siempre (`rooms`), pero las fechas solo llegan
+   * con sesión de personal: el servidor no las manda a visitantes ni a
+   * clientes registrados.
+   */
+  const isBusy = useCallback(
+    (type: RoomTypeInventory, unit: RoomUnit) =>
+      occupiedLabels.includes(`${type.name} · ${roomUnitLabel(type, unit)}`),
+    [occupiedLabels]
   );
 
   const unitsByType = useMemo(() => {
@@ -777,6 +807,7 @@ export default function GalleryPage() {
                         isOpen={openTypeId === type.id}
                         onToggle={() => setOpenTypeId(openTypeId === type.id ? null : type.id)}
                         occupiedByUnit={(unit) => occupiedByUnit(type, unit)}
+                        isBusy={(unit) => isBusy(type, unit)}
                         onReserve={(unit) => setReserving({ typeId: type.id, unitId: unit.id })}
                       />
                     ))}

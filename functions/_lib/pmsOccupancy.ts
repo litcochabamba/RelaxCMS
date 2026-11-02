@@ -17,7 +17,8 @@ export interface PmsOccupiedRoom {
   pms_room_id: number;
   room_type: string | null;
   room_name: string | null;
-  check_in: string;
+  /** Puede faltar: el PMS informa ocupaciones de estado sin fecha de entrada. */
+  check_in: string | null;
   check_out: string | null;
   reason: 'stay' | 'reservation' | 'status' | 'maintenance' | 'out_of_service';
 }
@@ -75,12 +76,18 @@ export async function fetchPmsOccupiedRooms(env: Env): Promise<PmsOccupiedRoom[]
     const rows = body?.data?.rooms;
     if (!Array.isArray(rows)) return null;
 
+    /*
+     * No se exige fecha de entrada: el PMS también informa habitaciones
+     * ocupadas sin estadía con fechas (estado manual, limpieza o uso interno).
+     * Filtrarlas acá las descartaba antes de que `pmsRangesForWindow` pudiera
+     * tratarlas, y por eso el CMS las mostraba libres aunque el PMS las tenga
+     * tomadas. Sin fecha de entrada, ese rango usa la ventana consultada.
+     */
     return rows.filter(
       (room) =>
         Number.isFinite(Number(room?.pms_room_id)) &&
         Number(room.pms_room_id) > 0 &&
-        isDate(room.check_in) &&
-        (room.check_out === null || isDate(room.check_out))
+        (room.check_out == null || isDate(room.check_out))
     );
   } catch {
     return null;
