@@ -3,6 +3,7 @@ import {
   isSecureRequest,
   json,
   serverConfigProblems,
+  SESSION_TTL_MS,
   sessionCookie,
   type Env,
 } from '../_lib/env';
@@ -15,7 +16,6 @@ import {
 } from '../_lib/supabase';
 import { verifyTurnstile } from '../_lib/turnstile';
 
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const UNAVAILABLE = 'El ingreso no está disponible en este momento. Probá más tarde.';
 
 interface LoginBody {
@@ -74,13 +74,18 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
       prefer: 'return=minimal',
     });
 
+    // `expiresAt` viaja al navegador para que caduque su copia local al mismo
+    // tiempo que la cookie HttpOnly, en vez de quedar una sesión zombi.
+    const expiresAt = Date.now() + SESSION_TTL_MS;
     const token = await createSessionToken(env, {
       sub: user.id,
       role: user.role,
-      exp: Date.now() + SESSION_TTL_MS,
+      exp: expiresAt,
     });
 
-    return json({ user }, 200, { 'Set-Cookie': sessionCookie(token, isSecureRequest(request)) });
+    return json({ user, expiresAt }, 200, {
+      'Set-Cookie': sessionCookie(token, isSecureRequest(request)),
+    });
   }
 
   // ---------- Cliente ----------
@@ -100,10 +105,11 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
       prefer: 'return=minimal',
     });
 
+    const expiresAt = Date.now() + SESSION_TTL_MS;
     const token = await createSessionToken(env, {
       sub: client.id,
       role: 'client',
-      exp: Date.now() + SESSION_TTL_MS,
+      exp: expiresAt,
     });
 
     return json(
@@ -117,6 +123,7 @@ export async function handleLogin(request: Request, env: Env): Promise<Response>
           hotel_id: client.hotel_id,
           avatar_url: null,
         },
+        expiresAt,
       },
       200,
       { 'Set-Cookie': sessionCookie(token, isSecureRequest(request)) }

@@ -313,11 +313,15 @@ export interface RegisterAccountInput {
 export interface AuthState {
   user: User | null;
   token: string | null;
+  /** Epoch (ms) en que el servidor da por vencida la cookie de sesión. */
+  sessionExpiresAt: number | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string, turnstileToken?: string) => Promise<void>;
   register: (input: RegisterAccountInput) => Promise<void>;
   logout: () => void;
+  /** Descarta la sesión local porque el servidor ya la rechazó (401). */
+  expire: () => void;
   setUser: (user: User) => void;
 }
 

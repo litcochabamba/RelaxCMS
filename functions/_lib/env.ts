@@ -57,7 +57,18 @@ export function serverConfigProblems(env: Env): string[] {
 }
 
 export const SESSION_COOKIE = 'cms_session';
-const SESSION_MAX_AGE = 60 * 60 * 8; // 8 horas
+
+/**
+ * Duración de la sesión del panel.
+ *
+ * Antes eran 8 horas: al vencer, la cookie desaparecía pero el panel seguía
+ * con la sesión local guardada y cada pantalla respondía «Sesión no válida o
+ * expirada». Una semana cubre la jornada sin pedir el ingreso de nuevo y el
+ * navegador caduca su copia con el mismo valor, así que las dos no se
+ * desincronizan.
+ */
+export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_MAX_AGE = Math.floor(SESSION_TTL_MS / 1000);
 
 export function json(data: unknown, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(data), {

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { db } from '../api/client';
+import { sessionFetch } from '../api/session';
 import type {
   Hotel, HeroSlide, Amenity,
   Attraction, GalleryItem, Comment, Inquiry, Reservation,
@@ -615,9 +616,8 @@ export function useReservations(hotelId: string) {
   return useQuery({
     queryKey: ['reservations', hotelId],
     queryFn: async () => {
-      const response = await fetch(
-        `${import.meta.env.BASE_URL}api/admin/reservations?hotel_id=${encodeURIComponent(hotelId)}`,
-        { credentials: 'include' }
+      const response = await sessionFetch(
+        `${import.meta.env.BASE_URL}api/admin/reservations?hotel_id=${encodeURIComponent(hotelId)}`
       );
       const body = (await response.json().catch(() => null)) as
         | { data?: Reservation[] | null; error?: string | null }
@@ -634,9 +634,8 @@ export function useSetReservationStatus() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: Reservation['status'] }) => {
-      const response = await fetch(`${import.meta.env.BASE_URL}api/admin/reservations`, {
+      const response = await sessionFetch(`${import.meta.env.BASE_URL}api/admin/reservations`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status }),
       });
@@ -669,9 +668,8 @@ export function useAllComments(hotelId: string) {
   return useQuery({
     queryKey: ['allComments', hotelId],
     queryFn: async () => {
-      const response = await fetch(
-        `${import.meta.env.BASE_URL}api/admin/comments?hotel_id=${encodeURIComponent(hotelId)}`,
-        { credentials: 'include' }
+      const response = await sessionFetch(
+        `${import.meta.env.BASE_URL}api/admin/comments?hotel_id=${encodeURIComponent(hotelId)}`
       );
       const body = (await response.json().catch(() => null)) as
         | { data?: Comment[]; error?: string | null }
@@ -703,9 +701,8 @@ export function useDashboardStats(hotelId: string) {
   return useQuery({
     queryKey: ['dashboardStats', hotelId],
     queryFn: async () => {
-      const response = await fetch(
-        `${import.meta.env.BASE_URL}api/admin/stats?hotel_id=${encodeURIComponent(hotelId)}`,
-        { credentials: 'include' }
+      const response = await sessionFetch(
+        `${import.meta.env.BASE_URL}api/admin/stats?hotel_id=${encodeURIComponent(hotelId)}`
       );
       const body = (await response.json().catch(() => null)) as
         | { data?: DashboardStats; error?: string | null }

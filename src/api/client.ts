@@ -2,6 +2,7 @@
 // Uses direct REST API calls to Supabase - no SDK dependency
 
 import type { User } from '../types';
+import { sessionFetch } from './session';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -129,9 +130,8 @@ async function adminWrite<T>(payload: {
   filters?: Record<string, unknown>;
 }): Promise<{ data: T | null; error: string | null }> {
   try {
-    const response = await fetch(`${import.meta.env.BASE_URL}api/admin/db`, {
+    const response = await sessionFetch(`${import.meta.env.BASE_URL}api/admin/db`, {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
@@ -163,9 +163,8 @@ async function adminSelectRows<T>(
   options?: { filters?: Record<string, unknown>; order?: { column: string; ascending?: boolean }; limit?: number }
 ): Promise<{ data: T[] | null; error: string | null }> {
   try {
-    const response = await fetch(`${import.meta.env.BASE_URL}api/admin/db`, {
+    const response = await sessionFetch(`${import.meta.env.BASE_URL}api/admin/db`, {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         table,
@@ -307,7 +306,7 @@ export const authApi = {
       });
 
       const body = (await response.json().catch(() => null)) as
-        | { user?: User; error?: string }
+        | { user?: User; expiresAt?: number; error?: string }
         | null;
 
       if (!response.ok || !body?.user) {
@@ -315,8 +314,12 @@ export const authApi = {
       }
 
       // La sesión real vive en una cookie HttpOnly; el valor local solo indica
-      // que hay sesión iniciada y nunca se envía a Supabase.
-      return { data: { user: body.user, token: 'session' }, error: null };
+      // que hay sesión iniciada y nunca se envía a Supabase. expiresAt es el
+      // vencimiento de esa cookie, para cerrar el panel a tiempo.
+      return {
+        data: { user: body.user, token: 'session', expiresAt: body.expiresAt ?? null },
+        error: null,
+      };
     } catch {
       return { data: null, error: 'No se pudo conectar con el servidor' };
     }
@@ -336,14 +339,17 @@ export const authApi = {
       });
 
       const body = (await response.json().catch(() => null)) as
-        | { user?: User; error?: string }
+        | { user?: User; expiresAt?: number; error?: string }
         | null;
 
       if (!response.ok || !body?.user) {
         return { data: null, error: body?.error || 'No se pudo crear la cuenta' };
       }
 
-      return { data: { user: body.user, token: 'session' }, error: null };
+      return {
+        data: { user: body.user, token: 'session', expiresAt: body.expiresAt ?? null },
+        error: null,
+      };
     } catch {
       return { data: null, error: 'No se pudo conectar con el servidor' };
     }
@@ -390,7 +396,7 @@ async function accountsRequest<T>(
   const { id, ...rest } = init;
   const url = `${import.meta.env.BASE_URL}api/admin/accounts?type=${kind}${id ? `&id=${encodeURIComponent(id)}` : ''}`;
   try {
-    const response = await fetch(url, { credentials: 'include', ...rest });
+    const response = await sessionFetch(url, rest);
     const body = (await response.json().catch(() => null)) as
       | { data?: T; error?: string | null; emailStatus?: AccountEmailStatus | null }
       | null;
@@ -521,9 +527,7 @@ export async function submitPromotionInquiry(input: {
 export const clientApi = {
   async me() {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}api/client/me`, {
-        credentials: 'include',
-      });
+      const response = await sessionFetch(`${import.meta.env.BASE_URL}api/client/me`);
       const body = (await response.json().catch(() => null)) as
         | { data?: unknown; error?: string | null }
         | null;
@@ -539,9 +543,8 @@ export const clientApi = {
   /** Cancela una reserva pendiente propia; la unidad vuelve a quedar libre. */
   async cancelReservation(id: string) {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}api/client/reservations`, {
+      const response = await sessionFetch(`${import.meta.env.BASE_URL}api/client/reservations`, {
         method: 'PATCH',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
@@ -559,9 +562,8 @@ export const clientApi = {
 
   async updateProfile(input: ProfileInput) {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}api/client/me`, {
+      const response = await sessionFetch(`${import.meta.env.BASE_URL}api/client/me`, {
         method: 'PATCH',
-        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(input),
       });
@@ -624,9 +626,8 @@ export async function uploadMedia(
     form.append('file', file);
     form.append('folder', folder);
 
-    const response = await fetch(`${import.meta.env.BASE_URL}api/admin/media`, {
+    const response = await sessionFetch(`${import.meta.env.BASE_URL}api/admin/media`, {
       method: 'POST',
-      credentials: 'include',
       body: form,
     });
 
@@ -668,9 +669,8 @@ export async function uploadCloudinaryImage(
   }
 
   try {
-    const signResponse = await fetch(`${import.meta.env.BASE_URL}api/admin/cloudinary-signature`, {
+    const signResponse = await sessionFetch(`${import.meta.env.BASE_URL}api/admin/cloudinary-signature`, {
       method: 'POST',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ folder }),
     });
@@ -740,9 +740,8 @@ export async function uploadCloudinaryImage(
 /** Borra un archivo del bucket a partir de su ruta relativa. */
 export async function deleteMedia(path: string): Promise<{ error: string | null }> {
   try {
-    const response = await fetch(`${import.meta.env.BASE_URL}api/admin/media`, {
+    const response = await sessionFetch(`${import.meta.env.BASE_URL}api/admin/media`, {
       method: 'DELETE',
-      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path }),
     });

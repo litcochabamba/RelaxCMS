@@ -10,6 +10,7 @@ import CountryCodesEditor from '../../components/admin/CountryCodesEditor';
 import StayScheduleSettings from '../../components/admin/StayScheduleSettings';
 import ImageUploadButton from '../../components/admin/ImageUploadButton';
 import { accountsApi } from '../../api/client';
+import { sessionFetch } from '../../api/session';
 import { 
   useHotels, useHeroSlides, 
   useAmenities, useGallery,
@@ -573,7 +574,7 @@ function PmsImportDialog({
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(
+      const response = await sessionFetch(
         `${import.meta.env.BASE_URL}api/admin/pms-import?hotel_id=${encodeURIComponent(hotelId)}`
       );
       const body = (await response.json().catch(() => null)) as
@@ -598,7 +599,7 @@ function PmsImportDialog({
     setApplying(true);
     setError('');
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}api/admin/pms-import`, {
+      const response = await sessionFetch(`${import.meta.env.BASE_URL}api/admin/pms-import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hotel_id: hotelId, overwrite_names: overwriteNames }),

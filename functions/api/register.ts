@@ -3,6 +3,7 @@ import {
   isSecureRequest,
   json,
   serverConfigProblems,
+  SESSION_TTL_MS,
   sessionCookie,
   type Env,
 } from '../_lib/env';
@@ -21,7 +22,6 @@ import {
 import { validateEmail } from '../_lib/emailCheck';
 import { checkRegistrationAttempts, pruneOldAttempts } from '../_lib/rateLimit';
 
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const UNAVAILABLE = 'El registro no está disponible en este momento. Probá más tarde.';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -258,10 +258,11 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
   void pruneOldAttempts(env);
 
   const client = inserted.data[0];
+  const expiresAt = Date.now() + SESSION_TTL_MS;
   const token = await createSessionToken(env, {
     sub: client.id,
     role: 'client',
-    exp: Date.now() + SESSION_TTL_MS,
+    exp: expiresAt,
   });
 
   return json(
@@ -279,6 +280,7 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
         country_dial: country.dial,
         country_name: country.name,
       },
+      expiresAt,
     },
     201,
     { 'Set-Cookie': sessionCookie(token, isSecureRequest(request)) }
