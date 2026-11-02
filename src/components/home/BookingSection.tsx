@@ -98,15 +98,21 @@ export default function BookingSection() {
   const typeUnits = selectedType ? units.filter((unit) => unit.tipo_id === selectedType.id) : [];
 
   // Ocupación por fechas: las reservas pendientes y confirmadas bloquean su
-  // unidad para todo rango que se solape. Se consulta solo con fechas válidas.
+  // unidad para todo rango que se solape. La ventana arranca siempre hoy,
+  // aunque todavía no se hayan elegido fechas: si se consultaba solo lo
+  // elegido, el selector ofrecía unidades que el PMS ya tiene tomadas (una
+  // estadía que empieza mañana no solapa con «hoy → mañana»). Los tres días de
+  // margen cubren además los estados operativos que el PMS informa sin fecha de
+  // salida: mantenimiento, fuera de servicio y limpieza.
+  const today = new Date().toISOString().slice(0, 10);
+  const inThreeDays = new Date(Date.parse(`${today}T00:00:00Z`) + 3 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
   const rangeValid = Boolean(
     form.fechaIngreso && form.fechaSalida && form.fechaSalida > form.fechaIngreso
   );
-  const { data: occupiedRooms = [] } = useRoomAvailability(
-    actualHotelId,
-    rangeValid ? form.fechaIngreso : '',
-    rangeValid ? form.fechaSalida : ''
-  );
+  const windowTo = rangeValid && form.fechaSalida > inThreeDays ? form.fechaSalida : inThreeDays;
+  const { data: occupiedRooms = [] } = useRoomAvailability(actualHotelId, today, windowTo);
   const occupied = new Set(occupiedRooms);
   const isUnitOccupied = (type: RoomTypeInventory, unit: RoomUnit) =>
     occupied.has(`${type.name} · ${roomUnitLabel(type, unit)}`);
