@@ -114,6 +114,11 @@ export default function BookingSection() {
     ? units.filter((unit) => unit.tipo_id === selectedType.id && !isUnitOccupied(selectedType, unit))
         .length
     : 0;
+  // El selector ofrece solo lo reservable: las ocupadas para las fechas
+  // elegidas se ocultan en vez de listarse deshabilitadas.
+  const selectableUnits = selectedType
+    ? typeUnits.filter((unit) => !isUnitOccupied(selectedType, unit))
+    : [];
 
   // Si las fechas elegidas dejan ocupada la unidad (o el tipo entero), se
   // limpia la selección para no enviar algo que ya está reservado.
@@ -543,25 +548,23 @@ export default function BookingSection() {
                     aria-label="Habitación"
                     value={form.habitacion}
                     onChange={(e) => setForm({ ...form, habitacion: e.target.value })}
-                    disabled={!selectedType || typeUnits.length === 0}
+                    disabled={!selectedType || selectableUnits.length === 0}
                     className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all disabled:bg-gray-100 disabled:text-gray-400"
                   >
                     <option value="">
                       {!selectedType
                         ? 'Elegí primero un tipo'
-                        : typeUnits.length === 0
-                          ? 'Sin unidades disponibles'
+                        : selectableUnits.length === 0
+                          ? 'Sin unidades libres para esas fechas'
                           : 'Seleccionar habitación'}
                     </option>
-                    {typeUnits.map((unit) => {
+                    {selectableUnits.map((unit) => {
                       const label = selectedType ? roomUnitLabel(selectedType, unit) : unit.name;
-                      const taken = selectedType ? isUnitOccupied(selectedType, unit) : false;
                       return (
-                        <option key={unit.id} value={label} disabled={taken}>
+                        <option key={unit.id} value={label}>
                           {label}
                           {unit.floor ? ` · ${unit.floor}` : ''}
                           {unit.capacity ? ` · ${unit.capacity} ${unit.capacity === 1 ? 'persona' : 'personas'}` : ''}
-                          {taken ? ' · ocupada' : ''}
                         </option>
                       );
                     })}

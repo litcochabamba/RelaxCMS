@@ -1,0 +1,56 @@
+name: Supabase keep-alive
+
+# Supabase pausa los proyectos gratuitos tras una semana sin actividad.
+# Con una consulta real dos veces por semana el proyecto no se pausa aunque
+# nadie abra el CMS.
+#
+# Secrets necesarios (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL       → https://<proyecto>.supabase.co
+#   SUPABASE_ANON_KEY  → la misma clave pública que usa el front
+#
+# Nota: GitHub desactiva los workflows programados tras 60 días sin actividad
+# en el repositorio. Si eso pasa, se reactiva con "Enable workflow".
+
+on:
+  schedule:
+    # Lunes y jueves a las 06:00 UTC (02:00 en Bolivia).
+    - cron: '0 6 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Consultar la tabla hoteles
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${SUPABASE_URL}" ] || [ -z "${SUPABASE_ANON_KEY}" ]; then
+            echo "::error::Faltan los secrets SUPABASE_URL y/o SUPABASE_ANON_KEY."
+            exit 1
+          fi
+
+          url="${SUPABASE_URL%/}/rest/v1/hoteles?select=id&limit=1"
+
+          code=$(curl -sS --max-time 25 -o /tmp/respuesta.json -w '%{http_code}' \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Accept: application/json" \
+            "$url")
+
+          echo "Supabase respondió HTTP ${code}"
+          head -c 300 /tmp/respuesta.json || true
+          echo
+
+          if [ "${code}" != "200" ]; then
+            echo "::error::Supabase respondió ${code}. Revisá la URL, la clave o si el proyecto está pausado."
+            exit 1
+          fi

@@ -16,7 +16,7 @@ import {
   useAmenities, useGallery,
   useAttractionsWithImages, useAllComments, useUsers, useCreateGalleryItem, useDeleteGalleryItem,
   useSetCommentStatus, useDeleteComment, useDashboardStats,
-  useReservations, useRoomTypes, useRoomUnits, useSetReservationStatus, useUpdateRoomType,
+  useReservations, useRoomTypes, useRoomUnits, useRoomAvailabilityRanges, useSetReservationStatus, useUpdateRoomType,
   useAdminPromotions, adminPromotionsQueryOptions, useCreatePromotion, useUpdatePromotion, useDeletePromotion
 } from '../../hooks/useQueries';
 import type { ClientAccount, Hotel, Promotion, RoomTypeInventory, RoomUnit, User } from '../../types';
@@ -936,6 +936,12 @@ function unitLabel(name: string) {
     .trim();
 }
 
+function isoDaysFromNow(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function GallerySection() {
   const { data: hotels } = useHotels();
   const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
@@ -946,6 +952,13 @@ function GallerySection() {
   const { data: gallery, isLoading: galleryLoading, error: galleryError } = useGallery(hotelId);
   const createGalleryItem = useCreateGalleryItem();
   const deleteGalleryItem = useDeleteGalleryItem();
+
+  // Ocupación real (PMS + reservas web): el panel pinta lo mismo que la
+  // galería, para que el estado de una unidad no se vea solo en el sitio.
+  const today = new Date().toISOString().slice(0, 10);
+  const horizon = isoDaysFromNow(7);
+  const { data: availability } = useRoomAvailabilityRanges(hotelId, today, horizon);
+  const ranges = availability?.ranges ?? [];
 
   const [openTypeId, setOpenTypeId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -991,6 +1004,19 @@ function GallerySection() {
     .filter((section) => section.id === 'habitacion')
     .reduce((sum, section) => sum + section.types.reduce((acc, type) => acc + unitCount(type.id), 0), 0);
   const totalDepartments = totalUnits - totalRooms;
+
+  /*
+   * Una unidad está tomada si el PMS o una reserva web le asignan fechas en la
+   * ventana consultada. Mantenimiento y fuera de servicio bloquean la ventana
+   * entera, así que se muestran como «No disponible» y no con fechas.
+   */
+  const unitBusy = (type: RoomTypeInventory, unit: RoomUnit): string | null => {
+    const prefix = type.grupo === 'departamento' ? 'Departamento' : 'Habitación';
+    const label = `${type.name} · ${prefix} ${unitLabel(unit.name)}`.trim();
+    const range = ranges.find((item) => item.room_type === label);
+    if (!range) return null;
+    return range.check_in <= today && range.check_out >= horizon ? 'No disponible' : 'Ocupada';
+  };
 
   const handleCreate = async () => {
     if (!hotelId) {
@@ -1224,23 +1250,40 @@ function GallerySection() {
                             <span className="text-[10px] text-gray-400">{typeUnits.length} en total</span>
                           </div>
                           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                            {typeUnits.map((unit) => (
-                              <div key={unit.id} className="rounded-lg border border-gray-100 bg-white px-3 py-2">
-                                <p className="text-xs font-semibold text-gray-900">
-                                  {section.singular} {unitLabel(unit.name)}
-                                </p>
-                                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
-                                  {unit.floor ? (
-                                    <span className="inline-flex items-center gap-1">
-                                      <MapPin className="w-3 h-3" strokeWidth={1.8} /> {unit.floor}
+                            {typeUnits.map((unit) => {
+                              const busy = unitBusy(type, unit);
+                              return (
+                                <div
+                                  key={unit.id}
+                                  className={`rounded-lg border px-3 py-2 ${
+                                    busy ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-white'
+                                  }`}
+                                >
+                                  <p
+                                    className={`text-xs font-semibold ${
+                                      busy ? 'text-red-700' : 'text-gray-900'
+                                    }`}
+                                  >
+                                    {section.singular} {unitLabel(unit.name)}
+                                  </p>
+                                  <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+                                    {unit.floor ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <MapPin className="w-3 h-3" strokeWidth={1.8} /> {unit.floor}
+                                      </span>
+                                    ) : null}
+                                    <span>
+                                      {unit.capacity || 1} {unit.capacity === 1 ? 'persona' : 'personas'}
                                     </span>
-                                  ) : null}
-                                  <span>
-                                    {unit.capacity || 1} {unit.capacity === 1 ? 'persona' : 'personas'}
-                                  </span>
-                                </p>
-                              </div>
-                            ))}
+                                    {busy ? (
+                                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-red-700">
+                                        {busy}
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       ) : null}
