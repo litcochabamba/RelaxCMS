@@ -3,7 +3,6 @@ export interface Hotel {
   name: string;
   slug: string;
   description: string | null;
-  phone: string | null;
   whatsapp: string | null;
   email: string | null;
   address: string | null;

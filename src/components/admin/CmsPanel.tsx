@@ -305,7 +305,6 @@ export default function CmsPanel() {
         facebook: hotel.facebook || '',
         instagram: hotel.instagram || '',
         tiktok: hotel.tiktok || '',
-        phone: hotel.phone || '',
         logo_url: hotel.logo_url || '',
       });
     }
@@ -330,18 +329,22 @@ export default function CmsPanel() {
 
   const handleSaveSettings = async () => {
     if (!hotelId) return;
+    const whatsapp = (editingHotel.whatsapp || '').replace(/[^0-9]/g, '');
+    if (whatsapp.length < 8) {
+      toast.error('El WhatsApp debe llevar el código de país, sin + ni espacios. Ej: 59162665925');
+      return;
+    }
     try {
       await updateHotel.mutateAsync({
         id: hotelId,
         data: {
           name: editingHotel.name,
-          whatsapp: editingHotel.whatsapp,
+          whatsapp,
           email: editingHotel.email,
           address: editingHotel.address,
           facebook: editingHotel.facebook,
           instagram: editingHotel.instagram,
           tiktok: editingHotel.tiktok,
-          phone: editingHotel.phone,
           logo_url: editingHotel.logo_url || null,
         },
       });
@@ -860,8 +863,7 @@ export default function CmsPanel() {
 
                         {[
                           { key: 'name', label: 'Nombre del Hotel', type: 'text', placeholder: 'Nombre del hotel' },
-                          { key: 'phone', label: 'Telefono', type: 'tel', placeholder: '+591 4 000000' },
-                          { key: 'whatsapp', label: 'WhatsApp', type: 'tel', placeholder: '59170000000' },
+                          { key: 'whatsapp', label: 'WhatsApp', type: 'tel', placeholder: '59162665925' },
                           { key: 'email', label: 'Correo', type: 'email', placeholder: 'info@hotel.com' },
                           { key: 'address', label: 'Direccion', type: 'textarea', placeholder: 'Direccion completa' },
                           { key: 'facebook', label: 'Facebook', type: 'url', placeholder: 'https://facebook.com/...' },
@@ -882,11 +884,30 @@ export default function CmsPanel() {
                               <input
                                 type={type}
                                 value={editingHotel[key] || ''}
-                                onChange={(e) => setEditingHotel({ ...editingHotel, [key]: e.target.value })}
+                                onChange={(e) =>
+                                  setEditingHotel({
+                                    ...editingHotel,
+                                    /*
+                                     * El WhatsApp se guarda solo con dígitos y código
+                                     * de país: es el número con el que se arma el
+                                     * enlace wa.me de reservas y consultas.
+                                     */
+                                    [key]:
+                                      key === 'whatsapp'
+                                        ? e.target.value.replace(/[^0-9]/g, '').slice(0, 15)
+                                        : e.target.value,
+                                  })
+                                }
                                 className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900"
                                 placeholder={placeholder}
                               />
                             )}
+                            {key === 'whatsapp' ? (
+                              <p className="mt-1 text-[11px] text-gray-400">
+                                Código de país + número, sin +, espacios ni guiones. Ej: 59162665925.
+                                A este número llegan las reservas y las consultas por promoción.
+                              </p>
+                            ) : null}
                           </div>
                         ))}
                       </div>

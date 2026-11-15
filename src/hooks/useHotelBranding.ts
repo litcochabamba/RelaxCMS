@@ -24,7 +24,6 @@ export function useHotelBranding() {
       secondaryColor: hotel?.secondary_color || HOTEL_FALLBACKS.secondaryColor,
       accentColor: hotel?.accent_color || HOTEL_FALLBACKS.accentColor,
       whatsapp: hotel?.whatsapp || HOTEL_FALLBACKS.whatsapp,
-      phone: hotel?.phone || HOTEL_FALLBACKS.phone,
       email: hotel?.email || HOTEL_FALLBACKS.email,
       address: hotel?.address || HOTEL_FALLBACKS.address,
       facebook: hotel?.facebook || HOTEL_FALLBACKS.facebook,

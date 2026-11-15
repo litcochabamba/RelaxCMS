@@ -42,6 +42,19 @@ export function generateWhatsAppUrl(
   return `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encoded}`;
 }
 
+/**
+ * Número de WhatsApp legible: `59162665925` → `+591 62665925`.
+ *
+ * El número se guarda solo con dígitos y código de país —es lo que necesita el
+ * enlace de `wa.me`—, así que la separación se hace al mostrarlo.
+ */
+export function formatWhatsApp(value: string): string {
+  const digits = (value || '').replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.length > 8) return `+${digits.slice(0, digits.length - 8)} ${digits.slice(-8)}`;
+  return `+${digits}`;
+}
+
 export function getInitials(name: string): string {
   return name
     .split(' ')

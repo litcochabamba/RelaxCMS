@@ -11,7 +11,6 @@ export const HOTEL_FALLBACKS = {
   secondaryColor: '#1a1a2e',
   accentColor: '#D4AF37',
   whatsapp: '59162665925',
-  phone: '+591 62665925',
   email: 'relaxhostal02@gmail.com',
   address: 'Av. Independencia, entre General Álvarez y 6 de Agosto, Cochabamba, Bolivia',
   facebook: 'https://www.facebook.com/hostal.relax.ii/',
@@ -27,7 +26,6 @@ interface HotelDataState {
   secondaryColor: string;
   accentColor: string;
   whatsapp: string;
-  phone: string;
   email: string;
   address: string;
   facebook: string;
@@ -45,7 +43,6 @@ export const useHotelDataStore = create<HotelDataState>((set) => ({
   secondaryColor: HOTEL_FALLBACKS.secondaryColor,
   accentColor: HOTEL_FALLBACKS.accentColor,
   whatsapp: HOTEL_FALLBACKS.whatsapp,
-  phone: HOTEL_FALLBACKS.phone,
   email: HOTEL_FALLBACKS.email,
   address: HOTEL_FALLBACKS.address,
   facebook: HOTEL_FALLBACKS.facebook,
