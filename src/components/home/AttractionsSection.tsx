@@ -4,12 +4,10 @@ import { ChevronRight, Loader2, MapPin } from 'lucide-react';
 import { useIntersectionObserver } from '../../hooks/useUtils';
 import { useAttractionsWithImages, useHotelConfig, useHotels } from '../../hooks/useQueries';
 import {
-  findAttractionFolder,
-  inferMediaType,
-  isUploadedMedia,
+  parseFolderOverrides,
+  resolveAttractionMedia,
   useAttractionsMedia,
   type AttractionMediaFile,
-  type AttractionMediaFolder,
 } from '../../hooks/useAttractionsMedia';
 import AttractionMap from './AttractionMap';
 import type { Attraction, AttractionImage, Hotel } from '../../types';
@@ -97,47 +95,6 @@ function parseDurations(value?: string | null): Record<string, number> {
   }
 }
 
-function parseFolderOverrides(value?: string | null): Record<string, string> {
-  if (!value) return {};
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed as Record<string, unknown>)
-        .filter(([, folder]) => typeof folder === 'string' && folder.trim() !== '')
-        .map(([id, folder]) => [id, String(folder).trim()])
-    );
-  } catch {
-    return {};
-  }
-}
-
-function resolveMedia(
-  attraction: AttractionLike,
-  folders: AttractionMediaFolder[],
-  overrides: Record<string, string>
-): AttractionMediaFile[] {
-  const dbMedia: AttractionMediaFile[] = (attraction.images || [])
-    .map((image) => image?.image_url)
-    .filter((url): url is string => typeof url === 'string' && url !== '')
-    .map((url, index) => ({
-      name: `medio-${index + 1}`,
-      url,
-      type: inferMediaType(url),
-    }));
-
-  // Lo subido desde el CMS manda: reemplaza la carpeta del proyecto. Las filas
-  // antiguas con URLs externas no pisan las fotos curadas de public/atractivos.
-  const uploaded = dbMedia.filter((file) => isUploadedMedia(file.url));
-  if (uploaded.length > 0) return uploaded;
-
-  const folder = findAttractionFolder(folders, attraction.title, overrides[attraction.id]);
-  if (folder && folder.files.length > 0) return folder.files;
-
-  if (dbMedia.length > 0) return dbMedia;
-  return [{ name: 'demo', url: DEMO_MEDIA, type: 'image' }];
-}
-
 export default function AttractionsSection() {
   const { ref, isVisible } = useIntersectionObserver();
   const [activeAttraction, setActiveAttraction] = useState(0);
@@ -178,7 +135,7 @@ export default function AttractionsSection() {
     }
     return rows.map((row) => ({
       ...row,
-      media: resolveMedia(row, folders, folderOverrides),
+      media: resolveAttractionMedia(row, folders, folderOverrides, DEMO_MEDIA),
     })) as SectionAttraction[];
   }, [dbAttractions, folders, folderOverrides, hotelId]);
 

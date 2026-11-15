@@ -149,13 +149,13 @@ export interface RoomUnit {
   updated_at: string;
 }
 
-export interface Amenity {
+export interface Service {
   id: string;
   hotel_id: string;
   name: string;
   icon: string | null;
   description: string | null;
-  /** Foto opcional de la amenidad; se muestra dentro de la tarjeta. */
+  /** Foto opcional de el servicio; se muestra dentro de la tarjeta. */
   image_url: string | null;
   category: string;
   value: string | null;
@@ -273,7 +273,7 @@ export type HomeBlockKind = 'aviso' | 'cinta';
 // de disponibilidad): los avisos y cintas empiezan después de Información.
 export type HomeBlockPlacement =
   | 'showcase'
-  | 'amenities'
+  | 'services'
   | 'rooms'
   | 'booking'
   | 'attractions'

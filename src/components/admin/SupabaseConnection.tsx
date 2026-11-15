@@ -141,7 +141,7 @@ export default function SupabaseConnection() {
           {[
             'hoteles', 'usuarios', 'clientes', 'configuracion_hotel',
             'hero_slides', 'tipos_habitacion', 'unidades_habitacion',
-            'amenidades', 'atractivos_turisticos', 'atractivo_imagenes',
+            'servicios_hotel', 'atractivos_turisticos', 'atractivo_imagenes',
             'galeria', 'reservas', 'consultas', 'comentarios',
             'promociones', 'intentos_registro'
           ].map((table) => (

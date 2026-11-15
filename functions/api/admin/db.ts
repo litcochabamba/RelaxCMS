@@ -8,7 +8,7 @@ const ALLOWED_TABLES = new Set([
   'hero_slides',
   'tipos_habitacion',
   'unidades_habitacion',
-  'amenidades',
+  'servicios_hotel',
   'atractivos_turisticos',
   'atractivo_imagenes',
   'galeria',

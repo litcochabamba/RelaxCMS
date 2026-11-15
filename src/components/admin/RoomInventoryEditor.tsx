@@ -4,8 +4,6 @@ import {
   BedDouble,
   Building2,
   ChevronDown,
-  Eye,
-  EyeOff,
   Image as ImageIcon,
   Loader2,
   Pencil,
@@ -40,32 +38,6 @@ function unitNumber(name: string) {
     .replace(/^n[.º°]?\s*/i, '')
     .replace(/^\./, '')
     .trim();
-}
-
-function ActiveToggle({
-  active,
-  onToggle,
-  label,
-}: {
-  active: boolean;
-  onToggle: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      title={active ? `Ocultar ${label}` : `Mostrar ${label}`}
-      aria-pressed={active}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-        active
-          ? 'border-gray-900 bg-gray-900 text-white'
-          : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
-      }`}
-    >
-      {active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-    </button>
-  );
 }
 
 interface UnitRowProps {
@@ -176,11 +148,15 @@ function UnitRow({ unit, singular, onSave }: UnitRowProps) {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <ActiveToggle
-              active={unit.active}
-              label={`la unidad ${unit.name}`}
-              onToggle={() => onSave(unit.id, { active: !unit.active })}
-            />
+            {/* La visibilidad no se toca acá: la decide RelaxPMS. */}
+            {unit.active ? null : (
+              <span
+                className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-amber-700"
+                title="En mantenimiento o fuera de servicio en RelaxPMS"
+              >
+                Oculta · RelaxPMS
+              </span>
+            )}
             <button
               type="button"
               onClick={startEdit}
@@ -247,14 +223,6 @@ export default function RoomInventoryEditor({ hotelId }: RoomInventoryEditorProp
       });
     } catch {
       toast.error('No se pudo guardar la preferencia');
-    }
-  };
-
-  const handleTypeToggle = async (type: RoomTypeInventory) => {
-    try {
-      await updateType.mutateAsync({ id: type.id, data: { active: !type.active } });
-    } catch {
-      toast.error('No se pudo actualizar el tipo');
     }
   };
 
@@ -398,7 +366,6 @@ export default function RoomInventoryEditor({ hotelId }: RoomInventoryEditorProp
                           {type.active ? '' : ' · Oculto'}
                         </p>
                       </button>
-                      <ActiveToggle active={type.active} label={type.name} onToggle={() => handleTypeToggle(type)} />
                       <button
                         type="button"
                         onClick={() => setOpenTypeId(isOpen ? null : type.id)}

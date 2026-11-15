@@ -1,5 +1,6 @@
 import { json, readSession, type Env } from '../../_lib/env';
 import { serviceRequest } from '../../_lib/supabase';
+import { fetchPmsCatalog } from '../../_lib/pmsCatalog';
 import {
   fetchPmsOccupiedRooms,
   loadPmsRoomLabels,
@@ -9,6 +10,16 @@ import {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `rooms.current_status` del PMS, para la galería del CMS. */
+const PMS_STATUS_LABEL: Record<number, string> = {
+  0: 'Disponible',
+  1: 'Ocupada',
+  2: 'Sucia',
+  3: 'Mantenimiento',
+  4: 'Reservada',
+  5: 'Fuera de servicio',
+};
 
 function dayValue(value: string): number | null {
   if (!DATE.test(value)) return null;
@@ -88,9 +99,41 @@ export async function handlePublicAvailability(
    * y la respuesta sigue siendo válida con las reservas web: la web nunca se
    * cae por la integración.
    */
+  /*
+   * «Próxima a liberarse»: la unidad está tomada ahora pero se conoce la fecha
+   * de salida. Viaja como etiqueta —sin fechas— para que también un visitante
+   * la vea: el rango exacto delata cuándo entra y sale un huésped.
+   */
+  const freeSoon = new Set<string>();
+  for (const row of rows) if (row.room_type) freeSoon.add(row.room_type);
+
+  /*
+   * «Reservable desde»: para cada unidad tomada, el día en que vuelve a estar
+   * libre. Es lo único que hace falta para venderla hacia adelante —igual que
+   * en el PMS— sin publicar el rango completo de la estadía. Mantenimiento y
+   * fuera de servicio no entran: no tienen liberación prevista.
+   */
+  const freeFromMap = new Map<string, string>();
+  const rememberFree = (label: string | null, day: string | null) => {
+    if (!label || !day) return;
+    const current = freeFromMap.get(label);
+    if (!current || day < current) freeFromMap.set(label, day);
+  };
+  for (const row of rows) rememberFree(row.room_type, row.check_out);
+
   if (pmsOccupied?.length) {
     const labels = await loadPmsRoomLabels(env, hotelId);
     const pmsRanges = pmsRangesForWindow(pmsOccupied, labels, checkIn, checkOut);
+    for (const room of pmsOccupied) {
+      const reason = String(room.reason);
+      // Mantenimiento y fuera de servicio no tienen liberación prevista.
+      if (reason !== 'stay' && reason !== 'reservation') continue;
+      if (!room.check_out) continue;
+      if (!(room.check_out > checkIn && (room.check_in ?? checkIn) < checkOut)) continue;
+      const label = labels.byPmsId.get(Number(room.pms_room_id));
+      if (label) freeSoon.add(label);
+      if (label) rememberFree(label, room.check_out);
+    }
     const seen = new Set(ranges.map((range) => `${range.room_type}|${range.check_in}|${range.check_out}`));
     for (const range of pmsRanges) {
       const key = `${range.room_type}|${range.check_in}|${range.check_out}`;
@@ -102,9 +145,38 @@ export async function handlePublicAvailability(
 
   const rooms = Array.from(new Set(ranges.map((range) => range.room_type).filter(Boolean)));
 
-  if (!canSeeRanges) return json({ data: { rooms }, error: null });
+  const soon = Array.from(freeSoon);
+  const freeFrom = Array.from(freeFromMap, ([room_type, free_from]) => ({ room_type, free_from }));
 
-  return json({ data: { rooms, ranges: ranges.slice(0, 500) }, error: null });
+  /*
+   * Estado operativo real de cada unidad, solo para el personal del CMS: la
+   * galería del panel muestra Sucia, Mantenimiento, Reservada…, no un único
+   * «Ocupada». Para un visitante esto no viaja nunca.
+   */
+  const states: Array<{ room_type: string; status: number | null; status_label: string | null }> = [];
+  if (canSeeRanges) {
+    const catalog = await fetchPmsCatalog(env).catch(() => null);
+    if (catalog?.catalog) {
+      const labels = await loadPmsRoomLabels(env, hotelId);
+      for (const room of catalog.catalog.rooms) {
+        const label = labels.byPmsId.get(Number(room.pms_id));
+        if (!label) continue;
+        const status = room.current_status === null ? null : Number(room.current_status);
+        states.push({
+          room_type: label,
+          status,
+          status_label: status === null ? null : PMS_STATUS_LABEL[status] ?? null,
+        });
+      }
+    }
+  }
+
+  if (!canSeeRanges) return json({ data: { rooms, free_soon: soon, free_from: freeFrom }, error: null });
+
+  return json({
+    data: { rooms, ranges: ranges.slice(0, 500), free_soon: soon, free_from: freeFrom, states },
+    error: null,
+  });
 }
 
 export const onRequestGet = ({ request, env }: { request: Request; env: Env }) =>

@@ -1,11 +1,28 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Users, BedDouble, ChevronDown, Minus, Plus } from 'lucide-react';
-import { useHotelConfig, useHotels, useRoomTypes, useRoomUnits } from '../../hooks/useQueries';
+import {
+  useHotelConfig,
+  useHotels,
+  useRoomAvailabilityRanges,
+  useRoomTypes,
+  useRoomUnits,
+} from '../../hooks/useQueries';
 import type { Hotel, HotelConfig, RoomTypeInventory, RoomUnit } from '../../types';
 import { HOTEL_FALLBACKS } from '../../store/hotelStore';
 import { generateWhatsAppUrl } from '../../utils/helpers';
 import DateRangePicker, { type DateRangeValue } from './DateRangePicker';
+
+/** Rótulo de la unidad con el mismo formato que usa la disponibilidad. */
+function unitLabel(type: RoomTypeInventory, unit: RoomUnit): string {
+  const prefix = type.grupo === 'departamento' ? 'Departamento' : 'Habitación';
+  const number = unit.name
+    .replace(/^dep\.?\s*/i, '')
+    .replace(/^n[.º°]?\s*/i, '')
+    .replace(/^\./, '')
+    .trim();
+  return `${type.name} · ${prefix} ${number}`.trim();
+}
 
 function getTodayStr() {
   const d = new Date();
@@ -160,6 +177,33 @@ export default function AvailabilityBar() {
     };
   }, [guestsOpen]);
 
+  const selectedType = selectableTypes.find((type) => type.name === roomType) ?? null;
+  /*
+   * Disponibilidad del rango pedido. La barra no reserva —deriva a WhatsApp—
+   * pero sí avisa cuándo vuelve a haber lugar, sin publicar fechas de entrada.
+   */
+  const { data: availability } = useRoomAvailabilityRanges(hotelId, stay.checkIn, stay.checkOut);
+  const occupiedLabels = new Set(availability?.rooms ?? []);
+  const freeFromLabels = new Map(
+    (availability?.freeFrom ?? []).map((item) => [item.room_type, item.free_from])
+  );
+  const typeUnits = selectedType
+    ? roomUnits.filter((unit) => unit.tipo_id === selectedType.id)
+    : [];
+  const freeTypeUnits = selectedType
+    ? typeUnits.filter((unit) => !occupiedLabels.has(unitLabel(selectedType, unit))).length
+    : 0;
+  const typeFreeFrom = selectedType
+    ? typeUnits
+        .map((unit) => freeFromLabels.get(unitLabel(selectedType, unit)))
+        .filter((day): day is string => Boolean(day))
+        .sort()[0] ?? null
+    : null;
+  const soldOut = Boolean(selectedType) && freeTypeUnits === 0 && Boolean(typeFreeFrom);
+  const checkoutTime =
+    ((Array.isArray(hotelConfigs) ? hotelConfigs : []) as HotelConfig[])
+      .find((config) => config.key === 'checkout_time')?.value || '12:00';
+
   const guestsSummary = [
     `${adults} ${adults === 1 ? 'adulto' : 'adultos'}`,
     `${children} ${children === 1 ? 'niño' : 'niños'}`,
@@ -260,6 +304,13 @@ export default function AvailabilityBar() {
             Consultar
           </button>
         </div>
+
+        {soldOut && typeFreeFrom ? (
+          <p className="mt-4 text-xs text-gray-500">
+            Sin unidades libres para esas fechas · {roomType} vuelve a estar disponible desde el{' '}
+            {typeFreeFrom.split('-').reverse().join('/')} · {checkoutTime}
+          </p>
+        ) : null}
       </div>
     </motion.div>
   );

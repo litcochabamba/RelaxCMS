@@ -25,7 +25,7 @@ import {
   Upload,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { db, deleteMedia, storagePathFromUrl, uploadMedia } from '../../api/client';
+import { db, deleteMedia, storagePathFromUrl, uploadCloudinaryImage } from '../../api/client';
 import { findAttractionFolder, inferMediaType, useAttractionsMedia } from '../../hooks/useAttractionsMedia';
 import {
   useCreateAttraction,
@@ -66,8 +66,6 @@ interface AttractionDraft {
   active: boolean;
   folder: string;
 }
-
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 export function suggestedFolder(title: string): string {
   return title
@@ -268,14 +266,9 @@ const AttractionsEditor = forwardRef<AttractionsEditorHandle, AttractionsEditorP
       setUploadingKey(draft.key);
 
       for (const file of Array.from(files)) {
-        if (file.size > MAX_UPLOAD_BYTES) {
-          toast.error(`${file.name} supera los 50 MB`);
-          failed += 1;
-          continue;
-        }
-
-        const { media, error } = await uploadMedia(file, `atractivos/${draft.id}`);
-        if (error || !media) {
+        // Cloudinary: imágenes hasta 10 MB y videos hasta 5 MB.
+        const { upload, error } = await uploadCloudinaryImage(file, 'relaxweb/atractivos');
+        if (error || !upload) {
           toast.error(error || `No se pudo subir ${file.name}`);
           failed += 1;
           continue;
@@ -283,7 +276,7 @@ const AttractionsEditor = forwardRef<AttractionsEditorHandle, AttractionsEditorP
 
         const { error: insertError } = await db.insert('atractivo_imagenes', {
           attraction_id: draft.id,
-          image_url: media.url,
+          image_url: upload.url,
           alt_text: file.name,
           order,
         });

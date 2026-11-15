@@ -5,7 +5,7 @@ import type { Env } from './env';
  *
  * El PMS es la fuente de verdad de la estructura (qué tipos y habitaciones
  * existen, capacidad y piso). El CMS es la copia pública, con contenido
- * editorial propio: fotos, descripciones, precios, amenidades y el nombre
+ * editorial propio: fotos, descripciones, precios, servicios y el nombre
  * "lindo" que se muestra en la galería.
  *
  * Por eso la importación NO es un espejo ciego:
@@ -13,7 +13,10 @@ import type { Env } from './env';
  *   · crea los tipos y unidades que faltan;
  *   · actualiza de las unidades existentes lo operativo (nombre normalizado,
  *     capacidad, piso y tipo al que pertenecen);
- *   · conserva precio, fotos, descripción y amenidades;
+ *   · reactiva una unidad cuando el PMS vuelve a reportarla utilizable: una
+ *     habitación que salió de mantenimiento no debe quedar oculta para
+ *     siempre por una reparación vieja;
+ *   · conserva precio, fotos, descripción y servicios;
  *   · no borra nada: lo que ya no está en el PMS se informa como «solo en el
  *     CMS» para que una persona decida;
  *   · los nombres de tipos existentes solo se pisan si se pide explícitamente
@@ -112,6 +115,13 @@ export interface UnusableUnitPlan {
   is_new: boolean;
 }
 
+/** Una unidad que estaba deshabilitada y el PMS ya reporta utilizable. */
+export interface UnitEnablePlan {
+  pms_id: number;
+  name: string;
+  type_name: string;
+}
+
 export interface CatalogPlan {
   /** `types_without_rooms` ayuda a explicar por qué la galería muestra menos tipos. */
   pms: { types: number; rooms: number; types_with_rooms: number; types_without_rooms: number };
@@ -127,6 +137,8 @@ export interface CatalogPlan {
     skipped: Array<{ pms_id: number; name: string; reason: string }>;
     /** Unidades que se van a ocultar por mantenimiento o fuera de servicio. */
     unusable: UnusableUnitPlan[];
+    /** Unidades que vuelven a publicarse porque el PMS ya las da por utilizables. */
+    enable: UnitEnablePlan[];
   };
   missing: {
     types: Array<{ pms_id: number; name: string }>;
@@ -135,6 +147,16 @@ export interface CatalogPlan {
 }
 
 const clean = (value: unknown) => String(value ?? '').trim();
+
+/**
+ * ¿Son el mismo texto? Ignora mayúsculas y espacios de más: el PMS guarda
+ * "PISO 5" y el CMS muestra "Piso 5". Con comparación exacta, cada
+ * importación reescribía el piso de las 64 unidades sin que nada cambiara.
+ */
+export const sameText = (a: unknown, b: unknown): boolean => {
+  const norm = (value: unknown) => clean(value).replace(/\s+/g, ' ').toLocaleLowerCase('es');
+  return norm(a) === norm(b);
+};
 const TIMEOUT_MS = 6000;
 
 /** Estados del PMS que dejan la habitación fuera de servicio. */
@@ -304,7 +326,7 @@ export function buildCatalogPlan(
       types_without_rooms: catalog.types.length - typesWithRoomsCount,
     },
     types: { create: [], rename: [], unchanged: 0 },
-    units: { create: [], update: [], unchanged: 0, skipped: [], unusable: [] },
+    units: { create: [], update: [], unchanged: 0, skipped: [], unusable: [], enable: [] },
     missing: { types: [], units: [] },
   };
 
@@ -394,9 +416,13 @@ export function buildCatalogPlan(
     const changes: string[] = [];
     if (existing.name !== name) changes.push('nombre');
     if ((existing.capacity ?? null) !== capacity) changes.push('capacidad');
-    if ((existing.floor ?? null) !== floor) changes.push('piso');
+    if (!sameText(existing.floor, floor)) changes.push('piso');
     if (Number(existingTypePms) !== typePmsId) changes.push('tipo');
     if (room.usable === false && existing.active !== false) changes.push('deshabilitar');
+    if (room.usable !== false && existing.active === false) {
+      changes.push('reactivar');
+      plan.units.enable.push({ pms_id: pmsId, name, type_name: typeName });
+    }
 
     if (room.usable === false && existing.active !== false) {
       plan.units.unusable.push({

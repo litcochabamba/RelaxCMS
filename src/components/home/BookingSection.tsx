@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { BadgeCheck } from 'lucide-react';
+import { BadgeCheck, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useHotelDataStore } from '../../store/hotelStore';
 import { useAuthStore } from '../../store/authStore';
@@ -11,7 +11,7 @@ import { useCountryCodes } from '../../hooks/useCountryCodes';
 import {
   useHotels,
   useHotelConfig,
-  useRoomAvailability,
+  useRoomAvailabilityRanges,
   useRoomTypes,
   useRoomUnits,
 } from '../../hooks/useQueries';
@@ -35,6 +35,11 @@ function roomUnitLabel(type: RoomTypeInventory, unit: RoomUnit) {
 function formatDay(value: string): string {
   const [year, month, day] = value.split('-');
   return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
+function addDays(date: string, days: number): string {
+  const time = Date.parse(`${date}T00:00:00Z`);
+  return Number.isNaN(time) ? date : new Date(time + days * 86_400_000).toISOString().slice(0, 10);
 }
 
 function getConfigValue(configs: any[], key: string, fallback: string): string {
@@ -97,13 +102,10 @@ export default function BookingSection() {
   const selectedType = availableTypes.find((type) => type.name === form.tipoHabitacion) || null;
   const typeUnits = selectedType ? units.filter((unit) => unit.tipo_id === selectedType.id) : [];
 
-  // Ocupación por fechas: las reservas pendientes y confirmadas bloquean su
-  // unidad para todo rango que se solape. La ventana arranca siempre hoy,
-  // aunque todavía no se hayan elegido fechas: si se consultaba solo lo
-  // elegido, el selector ofrecía unidades que el PMS ya tiene tomadas (una
-  // estadía que empieza mañana no solapa con «hoy → mañana»). Los tres días de
-  // margen cubren además los estados operativos que el PMS informa sin fecha de
-  // salida: mantenimiento, fuera de servicio y limpieza.
+  // Ocupación por fechas. La ventana es el rango pedido: una unidad ocupada
+  // esta semana pero libre en la fecha elegida tiene que poder reservarse,
+  // igual que en el PMS. Sin fechas se consultan hoy → +3 días, que además
+  // cubre los estados que el PMS informa sin fecha de salida.
   const today = new Date().toISOString().slice(0, 10);
   const inThreeDays = new Date(Date.parse(`${today}T00:00:00Z`) + 3 * 86_400_000)
     .toISOString()
@@ -111,8 +113,17 @@ export default function BookingSection() {
   const rangeValid = Boolean(
     form.fechaIngreso && form.fechaSalida && form.fechaSalida > form.fechaIngreso
   );
-  const windowTo = rangeValid && form.fechaSalida > inThreeDays ? form.fechaSalida : inThreeDays;
-  const { data: occupiedRooms = [] } = useRoomAvailability(actualHotelId, today, windowTo);
+  const availabilityFrom = rangeValid ? form.fechaIngreso : today;
+  const availabilityTo = rangeValid ? form.fechaSalida : inThreeDays;
+  const { data: availability } = useRoomAvailabilityRanges(
+    actualHotelId,
+    availabilityFrom,
+    availabilityTo
+  );
+  const occupiedRooms = availability?.rooms ?? [];
+  const freeFromMap = new Map(
+    (availability?.freeFrom ?? []).map((item) => [item.room_type, item.free_from])
+  );
   const occupied = new Set(occupiedRooms);
   const isUnitOccupied = (type: RoomTypeInventory, unit: RoomUnit) =>
     occupied.has(`${type.name} · ${roomUnitLabel(type, unit)}`);
@@ -125,27 +136,46 @@ export default function BookingSection() {
   const selectableUnits = selectedType
     ? typeUnits.filter((unit) => !isUnitOccupied(selectedType, unit))
     : [];
+  /**
+   * Unidades del tipo que hoy no se pueden tomar, con el día en que se
+   * liberan. No se ocultan: el huésped tiene que ver que existen y desde
+   * cuándo puede reservarlas.
+   */
+  const busyTypeUnits = selectedType
+    ? typeUnits
+        .filter((unit) => isUnitOccupied(selectedType, unit))
+        .map((unit) => ({
+          unit,
+          label: roomUnitLabel(selectedType, unit),
+          freeFrom:
+            freeFromMap.get(`${selectedType.name} · ${roomUnitLabel(selectedType, unit)}`) ?? null,
+        }))
+    : [];
+  const soonTypeUnits = busyTypeUnits.filter((entry) => entry.freeFrom);
+  const checkoutTime = getConfigValue(configs, 'checkout_time', '12:00');
+  const shortDay = (day: string) => day.split('-').reverse().join('/');
 
-  // Si las fechas elegidas dejan ocupada la unidad (o el tipo entero), se
-  // limpia la selección para no enviar algo que ya está reservado.
+  // Solo se limpia el tipo cuando no queda nada reservable —ni siquiera una
+  // unidad que se libere más adelante—: la unidad elegida no se borra, porque
+  // elegir una ocupada ajusta el ingreso a su fecha de liberación y el envío ya
+  // avisa si las fechas siguen chocando.
   useEffect(() => {
     if (!form.tipoHabitacion) return;
     const type = roomTypes.find((item) => item.name === form.tipoHabitacion);
     if (!type) return;
 
     const taken = new Set(occupiedRooms);
-    const free = units.filter(
-      (unit) => unit.tipo_id === type.id && !taken.has(`${type.name} · ${roomUnitLabel(type, unit)}`)
-    ).length;
+    const freeLater = new Set((availability?.freeFrom ?? []).map((item) => item.room_type));
+    const bookable = units.some((unit) => {
+      if (unit.tipo_id !== type.id) return false;
+      const label = `${type.name} · ${roomUnitLabel(type, unit)}`;
+      return !taken.has(label) || freeLater.has(label);
+    });
 
-    if (free === 0) {
+    if (!bookable) {
       setForm((current) => ({ ...current, tipoHabitacion: '', habitacion: '' }));
-      return;
     }
-    if (form.habitacion && taken.has(`${type.name} · ${form.habitacion}`)) {
-      setForm((current) => ({ ...current, habitacion: '' }));
-    }
-  }, [occupiedRooms, roomTypes, units, form.tipoHabitacion, form.habitacion]);
+  }, [availability, occupiedRooms, roomTypes, units, form.tipoHabitacion]);
 
   // Carrusel de tipos: una tarjeta a la vez, sin flechas ni guías, avanzando
   // cada `booking_types_duration` segundos (configurable en el panel flotante).
@@ -549,13 +579,34 @@ export default function BookingSection() {
 
                   <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Habitación *</label>
+                  <div className="relative">
                   <select
                     required
                     aria-label="Habitación"
                     value={form.habitacion}
-                    onChange={(e) => setForm({ ...form, habitacion: e.target.value })}
-                    disabled={!selectedType || selectableUnits.length === 0}
-                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all disabled:bg-gray-100 disabled:text-gray-400"
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const busy = busyTypeUnits.find((entry) => entry.label === value);
+                      if (busy?.freeFrom) {
+                        /*
+                         * La unidad sigue ocupada pero tiene fecha de salida: se
+                         * puede elegir y el ingreso se mueve al día en que queda
+                         * libre, igual que la reserva desde la galería.
+                         */
+                        const from = busy.freeFrom;
+                        setForm((current) => ({
+                          ...current,
+                          habitacion: value,
+                          fechaIngreso: from,
+                          fechaSalida:
+                            current.fechaSalida > from ? current.fechaSalida : addDays(from, 2),
+                        }));
+                        return;
+                      }
+                      setForm({ ...form, habitacion: value });
+                    }}
+                    disabled={!selectedType}
+                    className="w-full px-4 py-3 pr-12 bg-white border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10 focus:border-gray-900 transition-all disabled:bg-gray-100 disabled:text-gray-400"
                   >
                     <option value="">
                       {!selectedType
@@ -574,7 +625,49 @@ export default function BookingSection() {
                         </option>
                       );
                     })}
+                    {busyTypeUnits.map((entry) => (
+                      <option key={entry.unit.id} value={entry.label}>
+                        {entry.label}
+                        {entry.unit.floor ? ` · ${entry.unit.floor}` : ''}
+                        {entry.unit.capacity
+                          ? ` · ${entry.unit.capacity} ${entry.unit.capacity === 1 ? 'persona' : 'personas'}`
+                          : ''}
+                      </option>
+                    ))}
                   </select>
+                  {soonTypeUnits.length > 0 ? (
+                    <span className="group absolute right-9 top-1/2 -translate-y-1/2">
+                      <span
+                        tabIndex={0}
+                        role="button"
+                        aria-label="Ver unidades que se liberan"
+                        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-emerald-600 text-white outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/40"
+                      >
+                        <Info className="h-3 w-3" strokeWidth={3} />
+                      </span>
+                      <span className="pointer-events-none absolute bottom-full right-0 z-50 mb-2 hidden w-64 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs font-normal leading-relaxed text-emerald-900 shadow-lg group-hover:block group-focus-within:block">
+                        {soonTypeUnits.map((entry) => (
+                          <span key={entry.unit.id} className="block">
+                            <strong className="font-semibold">{entry.label}</strong> estará reservable
+                            desde el {shortDay(entry.freeFrom as string)} · {checkoutTime}
+                          </span>
+                        ))}
+                      </span>
+                    </span>
+                  ) : null}
+                  </div>
+                  {busyTypeUnits.length > 0 ? (
+                    <div className="mt-1 space-y-0.5">
+                      {busyTypeUnits.map((entry) => (
+                        <p key={entry.unit.id} className="text-xs text-emerald-700">
+                          {entry.label} ·{' '}
+                          {entry.freeFrom
+                            ? `estará reservable desde el ${shortDay(entry.freeFrom)} · ${checkoutTime}`
+                            : 'no disponible por ahora'}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
                   {selectedType ? (
                     <p className="mt-1 text-xs text-gray-500">
                       {rangeValid

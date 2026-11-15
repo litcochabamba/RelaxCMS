@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { uploadMedia } from '../../api/client';
+import { uploadCloudinaryImage } from '../../api/client';
 import { useUpsertHotelConfig } from '../../hooks/useQueries';
 import {
   PLACEMENT_LABELS,
@@ -87,7 +87,7 @@ export default function HomeBlocksEditor({
 
   const add = (kind: HomeBlock['kind']) => {
     newBlockCounter += 1;
-    const after: HomeBlockPlacement = kind === 'cinta' ? 'amenities' : 'rooms';
+    const after: HomeBlockPlacement = kind === 'cinta' ? 'services' : 'rooms';
     const block = defaultBlock(kind, after);
     block.id = `${block.id}-${newBlockCounter}`;
     setBlocks((current) => [...current, block]);
@@ -112,18 +112,14 @@ export default function HomeBlocksEditor({
 
   const handleUpload = async (id: string, file: File | undefined) => {
     if (!file) return;
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error('La imagen supera los 20 MB');
-      return;
-    }
     setUploading(true);
-    const { media, error } = await uploadMedia(file, 'bloques');
+    const { upload, error } = await uploadCloudinaryImage(file, 'relaxweb/bloques');
     setUploading(false);
-    if (error || !media) {
+    if (error || !upload) {
       toast.error(error || 'No se pudo subir la imagen');
       return;
     }
-    update(id, { image_url: media.url });
+    update(id, { image_url: upload.url });
   };
 
   const handleSave = async () => {

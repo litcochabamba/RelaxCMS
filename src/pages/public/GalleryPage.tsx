@@ -6,6 +6,8 @@ import {
   Building2,
   CalendarDays,
   ChevronDown,
+  Clock,
+  Info,
   Loader2,
   MapPin,
   Sparkles,
@@ -74,6 +76,11 @@ function roomUnitLabel(type: RoomTypeInventory, unit: RoomUnit) {
   return `${prefix} ${unitNumber(unit.name)}`.trim();
 }
 
+function addDays(date: string, days: number): string {
+  const time = Date.parse(`${date}T00:00:00Z`);
+  return Number.isNaN(time) ? isoDaysFromNow(days) : new Date(time + days * 86_400_000).toISOString().slice(0, 10);
+}
+
 function isoDaysFromNow(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -86,11 +93,6 @@ function formatDay(value: string): string {
 }
 
 /** «2026-10-23 → 2026-10-27»: las fechas en que la unidad ya está tomada. */
-function rangeLabel(range: { check_in: string; check_out: string }, onlyUpcoming = false) {
-  const from = onlyUpcoming && range.check_in ? formatDay(range.check_in) : null;
-  return from ? `Ocupada desde el ${from}` : `${formatDay(range.check_in)} → ${formatDay(range.check_out)}`;
-}
-
 function capacityLabel(type: RoomTypeInventory) {
   const min = type.min_capacity;
   const max = type.max_capacity;
@@ -112,6 +114,10 @@ interface UnitCardProps {
   occupied: Array<{ check_in: string; check_out: string }>;
   /** Ocupación sin fechas: el servidor la informa a cualquier visitante. */
   busy: boolean;
+  /** Día en que la unidad vuelve a estar libre; null si no se sabe. */
+  freeFrom: string | null;
+  /** Hora de salida del hotel: el momento en que queda libre. */
+  checkoutTime: string;
   price: number | null;
   onReserve: () => void;
 }
@@ -122,6 +128,8 @@ function UnitCard({
   showNumber,
   occupied,
   busy,
+  freeFrom,
+  checkoutTime,
   price,
   onReserve,
 }: UnitCardProps) {
@@ -174,21 +182,30 @@ function UnitCard({
        */}
       {busy ? (
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-red-900 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-red-900 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white"
+            /* El rango solo llega con sesión de personal: para un visitante
+               esto queda sin tooltip. */
+            title={nextRange ? `Ocupada hasta el ${formatDay(nextRange.check_out)}` : undefined}
+          >
             <CalendarDays className="h-3 w-3" strokeWidth={2} />
             Ocupada
           </span>
-          {nextRange ? (
-            <span className="text-[11px] leading-snug text-red-900/70">
-              {rangeLabel(nextRange)}
-              {occupied.length > 1 ? ` · ${occupied.length} estadías` : ''}
+          {freeFrom ? (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-600/30 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800"
+              /* Popup: el detalle queda a un hover, la etiqueta no lo grita. */
+              title={`Reservable desde el ${formatDay(freeFrom)} · ${checkoutTime}`}
+            >
+              <Info className="h-3 w-3" strokeWidth={2.4} />
+              Reservable
             </span>
           ) : null}
         </div>
       ) : null}
 
       <div className="mt-auto pt-4">
-        {busy ? (
+        {busy && !freeFrom ? (
           <button
             type="button"
             disabled
@@ -219,6 +236,8 @@ interface TypeCardProps {
   onToggle: () => void;
   occupiedByUnit: (unit: RoomUnit) => Array<{ check_in: string; check_out: string }>;
   isBusy: (unit: RoomUnit) => boolean;
+  freeFrom: (unit: RoomUnit) => string | null;
+  checkoutTime: string;
   onReserve: (unit: RoomUnit) => void;
 }
 
@@ -231,6 +250,8 @@ function TypeCard({
   onToggle,
   occupiedByUnit,
   isBusy,
+  freeFrom,
+  checkoutTime,
   onReserve,
 }: TypeCardProps) {
   const price = formatPrice(type.price);
@@ -366,6 +387,8 @@ function TypeCard({
                     showNumber={showNumbers}
                     occupied={occupiedByUnit(unit)}
                     busy={isBusy(unit)}
+                    freeFrom={freeFrom(unit)}
+                    checkoutTime={checkoutTime}
                     price={type.price ?? null}
                     onReserve={() => onReserve(unit)}
                   />
@@ -383,6 +406,8 @@ interface GalleryReservationProps {
   hotelId: string;
   type: RoomTypeInventory;
   unit: RoomUnit;
+  /** Día en que la unidad queda libre: se propone como fecha de ingreso. */
+  from?: string | null;
   onClose: () => void;
 }
 
@@ -393,14 +418,15 @@ interface GalleryReservationProps {
  * (`POST /api/public/reservation`), así que la solicitud bloquea la unidad y
  * genera el aviso de recepción en RelaxPMS por el camino de siempre.
  */
-function GalleryReservation({ hotelId, type, unit, onClose }: GalleryReservationProps) {
+function GalleryReservation({ hotelId, type, unit, from = null, onClose }: GalleryReservationProps) {
   const queryClient = useQueryClient();
   const { isAuthenticated, user } = useAuthStore();
   const isClient = isAuthenticated && user?.role === 'client';
   const { data: countries = [] } = useCountryCodes();
 
-  const [checkIn, setCheckIn] = useState(isoDaysFromNow(1));
-  const [checkOut, setCheckOut] = useState(isoDaysFromNow(3));
+  const suggested = from || isoDaysFromNow(1);
+  const [checkIn, setCheckIn] = useState(suggested);
+  const [checkOut, setCheckOut] = useState(addDays(suggested, 2));
   const [name, setName] = useState('');
   const [countryIso, setCountryIso] = useState('');
   const [countryDial, setCountryDial] = useState('');
@@ -718,6 +744,18 @@ export default function GalleryPage() {
     [occupiedLabels]
   );
 
+  /*
+   * Día en que cada unidad tomada vuelve a estar libre: lo que permite reservar
+   * hacia adelante sin publicar el rango de la estadía en curso.
+   */
+  const freeFromLabels = new Map(
+    (availability?.freeFrom ?? []).map((item) => [item.room_type, item.free_from])
+  );
+  const freeFromOf = (type: RoomTypeInventory, unit: RoomUnit): string | null =>
+    freeFromLabels.get(`${type.name} · ${roomUnitLabel(type, unit)}`) ?? null;
+  /** Hora de salida del hotel: el momento en que la unidad queda libre. */
+  const checkoutTime = getConfigValue(configs, 'checkout_time', '12:00');
+
   const unitsByType = useMemo(() => {
     const map = new Map<string, RoomUnit[]>();
     units.forEach((unit) => {
@@ -808,6 +846,8 @@ export default function GalleryPage() {
                         onToggle={() => setOpenTypeId(openTypeId === type.id ? null : type.id)}
                         occupiedByUnit={(unit) => occupiedByUnit(type, unit)}
                         isBusy={(unit) => isBusy(type, unit)}
+                        freeFrom={(unit) => freeFromOf(type, unit)}
+                        checkoutTime={checkoutTime}
                         onReserve={(unit) => setReserving({ typeId: type.id, unitId: unit.id })}
                       />
                     ))}
@@ -860,6 +900,7 @@ export default function GalleryPage() {
           hotelId={hotelId}
           type={reservingType}
           unit={reservingUnit}
+          from={freeFromOf(reservingType, reservingUnit)}
           onClose={() => setReserving(null)}
         />
       ) : null}

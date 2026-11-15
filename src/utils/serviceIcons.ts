@@ -48,10 +48,10 @@ import {
 import type { LucideIcon } from 'lucide-react';
 
 /**
- * Iconos disponibles para las amenidades. La clave es el nombre que se guarda
+ * Iconos disponibles para los servicios. La clave es el nombre que se guarda
  * en la columna `icon` y se comparte entre la portada y el panel CMS.
  */
-export const AMENITY_ICONS: Record<string, LucideIcon> = {
+export const SERVICE_ICONS: Record<string, LucideIcon> = {
   Wifi,
   Waves,
   Sparkles,
@@ -99,12 +99,12 @@ export const AMENITY_ICONS: Record<string, LucideIcon> = {
   CircleDot,
 };
 
-export const AMENITY_ICON_OPTIONS = Object.keys(AMENITY_ICONS);
+export const SERVICE_ICON_OPTIONS = Object.keys(SERVICE_ICONS);
 
-export const DEFAULT_AMENITY_ICON = 'CircleDot';
+export const DEFAULT_SERVICE_ICON = 'CircleDot';
 
-export function getAmenityIcon(name?: string | null): LucideIcon {
-  return (name ? AMENITY_ICONS[name] : undefined) || AMENITY_ICONS[DEFAULT_AMENITY_ICON];
+export function getServiceIcon(name?: string | null): LucideIcon {
+  return (name ? SERVICE_ICONS[name] : undefined) || SERVICE_ICONS[DEFAULT_SERVICE_ICON];
 }
 
-export { AMENITY_ICONS as iconMap, CircleDot as DefaultIcon };
+export { SERVICE_ICONS as iconMap, CircleDot as DefaultIcon };

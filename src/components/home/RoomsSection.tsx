@@ -245,7 +245,7 @@ export default function RoomsSection() {
                       {room.description || 'Una habitación cómoda y elegante, diseñada para tu máximo confort y descanso.'}
                     </p>
 
-                    {/* Amenity icons */}
+                    {/* Service icons */}
                     {icons.length > 0 && (
                       <div className="flex items-center gap-4 pt-4 border-t border-gray-100">
                         {icons.map(({ name, Icon }, i) => (

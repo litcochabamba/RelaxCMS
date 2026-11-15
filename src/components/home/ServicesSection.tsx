@@ -1,26 +1,26 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useIntersectionObserver } from '../../hooks/useUtils';
-import { useHotels, useAmenities, useHotelConfig } from '../../hooks/useQueries';
+import { useHotels, useServices, useHotelConfig } from '../../hooks/useQueries';
 import { Loader2 } from 'lucide-react';
-import { getAmenityIcon } from '../../utils/amenityIcons';
-import type { Amenity, Hotel } from '../../types';
+import { getServiceIcon } from '../../utils/serviceIcons';
+import type { Service, Hotel } from '../../types';
 
 /**
- * Configuración de los grupos de amenidades guardada en
- * `configuracion_hotel.amenities_groups`: el orden del arreglo es el orden en
+ * Configuración de los grupos de servicios guardada en
+ * `configuracion_hotel.services_groups`: el orden del arreglo es el orden en
  * la portada y `visible` decide si el grupo se muestra.
  */
-export interface AmenityGroupConfig {
+export interface ServiceGroupConfig {
   category: string;
   visible: boolean;
 }
 
-const DEFAULT_TITLE = 'Amenidades';
+const DEFAULT_TITLE = 'Servicios del hotel';
 const DEFAULT_DESCRIPTION =
   'Todo lo que necesitas para una estancia perfecta. Disfruta de nuestras instalaciones y servicios diseñados para tu comodidad.';
 
-const FALLBACK_AMENITIES: Array<Pick<Amenity, 'name' | 'description' | 'icon'>> = [
+const FALLBACK_SERVICES: Array<Pick<Service, 'name' | 'description' | 'icon'>> = [
   { icon: 'Wifi', name: 'Wi-Fi Gratuito', description: 'Conexión de alta velocidad en todas las áreas del hotel.' },
   { icon: 'Waves', name: 'Piscina', description: 'Disfruta de nuestra piscina con vista panorámica.' },
   { icon: 'Sparkles', name: 'Spa & Bienestar', description: 'Relájate con nuestros tratamientos de masaje y bienestar.' },
@@ -29,7 +29,7 @@ const FALLBACK_AMENITIES: Array<Pick<Amenity, 'name' | 'description' | 'icon'>> 
   { icon: 'Car', name: 'Estacionamiento', description: 'Estacionamiento privado y seguro para huéspedes.' },
 ];
 
-export function parseAmenityGroups(value?: string | null): AmenityGroupConfig[] | null {
+export function parseServiceGroups(value?: string | null): ServiceGroupConfig[] | null {
   if (!value) return null;
   try {
     const parsed: unknown = JSON.parse(value);
@@ -47,7 +47,7 @@ export function parseAmenityGroups(value?: string | null): AmenityGroupConfig[] 
   }
 }
 
-export function serializeAmenityGroups(groups: AmenityGroupConfig[]): string {
+export function serializeServiceGroups(groups: ServiceGroupConfig[]): string {
   return JSON.stringify(groups.map((group) => ({ category: group.category, visible: group.visible })));
 }
 
@@ -56,7 +56,7 @@ function getConfigValue(configs: Array<{ key: string; value: string }>, key: str
   return item?.value || fallback;
 }
 
-interface AmenityCardProps {
+interface ServiceCardProps {
   name: string;
   description?: string | null;
   icon?: string | null;
@@ -66,9 +66,9 @@ interface AmenityCardProps {
 }
 
 // Card rectangular con el icono sobresaliendo por el borde superior. Si la
-// amenidad tiene foto, la foto ocupa el ancho de la card y el texto va debajo.
-function AmenityCard({ name, description, icon, imageUrl, delay, isVisible }: AmenityCardProps) {
-  const Icon = getAmenityIcon(icon);
+// servicio tiene foto, la foto ocupa el ancho de la card y el texto va debajo.
+function ServiceCard({ name, description, icon, imageUrl, delay, isVisible }: ServiceCardProps) {
+  const Icon = getServiceIcon(icon);
 
   return (
     <motion.div
@@ -98,34 +98,43 @@ function AmenityCard({ name, description, icon, imageUrl, delay, isVisible }: Am
   );
 }
 
-export default function AmenitiesSection() {
+export default function ServicesSection() {
   const { ref, isVisible } = useIntersectionObserver();
 
   const { data: hotels } = useHotels();
   const hotelId = (hotels as Hotel[] | null)?.[0]?.id || '';
 
-  const { data: amenitiesData = [], isLoading } = useAmenities(hotelId);
-  const amenities = (Array.isArray(amenitiesData) ? amenitiesData : []) as Amenity[];
+  const { data: servicesData = [], isLoading } = useServices(hotelId);
+  const services = (Array.isArray(servicesData) ? servicesData : []) as Service[];
   const { data: configsData = [] } = useHotelConfig(hotelId);
   const configs = (Array.isArray(configsData) ? configsData : []) as Array<{ key: string; value: string }>;
 
-  const groupsConfig = getConfigValue(configs, 'amenities_groups', '');
+  const groupsConfig = getConfigValue(configs, 'services_groups', '');
 
   // Grupos en el orden configurado; los que existan en la base pero no en la
   // configuración se agregan al final y visibles, para no ocultar contenido.
   const groups = useMemo(() => {
-    const categories = [...new Set(amenities.map((amenity) => amenity.category).filter(Boolean))];
-    const configured = parseAmenityGroups(groupsConfig) || [];
-    const ordered: AmenityGroupConfig[] = configured.filter((group) => categories.includes(group.category));
+    const categories = [...new Set(services.map((service) => service.category).filter(Boolean))];
+    const configured = parseServiceGroups(groupsConfig) || [];
+    const ordered: ServiceGroupConfig[] = configured.filter((group) => categories.includes(group.category));
     categories.forEach((category) => {
       if (!ordered.some((group) => group.category === category)) {
         ordered.push({ category, visible: true });
       }
     });
     return ordered;
-  }, [amenities, groupsConfig]);
+  }, [services, groupsConfig]);
 
   const visibleGroups = groups.filter((group) => group.visible);
+  // Si todos los grupos están ocultos desde el CMS, la sección no se muestra:
+  // antes quedaba una franja con el título y la descripción pero sin tarjetas.
+  const hasVisibleContent =
+    services.length === 0 ||
+    visibleGroups.some((group) =>
+      services.some((service) => service.category === group.category)
+    );
+
+  if (!isLoading && !hasVisibleContent) return null;
 
   return (
     <section className="py-12 lg:py-16 bg-gray-50">
@@ -138,23 +147,23 @@ export default function AmenitiesSection() {
           className="text-center mb-16"
         >
           <h2 className="text-4xl md:text-5xl font-serif text-gray-900 mb-6">
-            {getConfigValue(configs, 'amenities_title', DEFAULT_TITLE)}
+            {getConfigValue(configs, 'services_title', DEFAULT_TITLE)}
           </h2>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            {getConfigValue(configs, 'amenities_description', DEFAULT_DESCRIPTION)}
+            {getConfigValue(configs, 'services_description', DEFAULT_DESCRIPTION)}
           </p>
         </motion.div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-20">
             <Loader2 className="animate-spin h-8 w-8 text-gray-400" />
-            <span className="ml-3 text-gray-500">Cargando amenidades...</span>
+            <span className="ml-3 text-gray-500">Cargando servicios...</span>
           </div>
-        ) : amenities.length === 0 ? (
-          /* Fallback amenities when DB is empty */
+        ) : services.length === 0 ? (
+          /* Fallback services when DB is empty */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-10">
-            {FALLBACK_AMENITIES.map((item, index) => (
-              <AmenityCard
+            {FALLBACK_SERVICES.map((item, index) => (
+              <ServiceCard
                 key={item.name}
                 name={item.name}
                 description={item.description}
@@ -166,7 +175,7 @@ export default function AmenitiesSection() {
           </div>
         ) : (
           visibleGroups.map((group, groupIndex) => {
-            const items = amenities.filter((amenity) => amenity.category === group.category);
+            const items = services.filter((service) => service.category === group.category);
             if (items.length === 0) return null;
 
             return (
@@ -185,13 +194,13 @@ export default function AmenitiesSection() {
                 </motion.div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-10">
-                  {items.map((amenity, index) => (
-                    <AmenityCard
-                      key={amenity.id}
-                      name={amenity.name}
-                      description={amenity.description}
-                      icon={amenity.icon}
-                      imageUrl={amenity.image_url}
+                  {items.map((service, index) => (
+                    <ServiceCard
+                      key={service.id}
+                      name={service.name}
+                      description={service.description}
+                      icon={service.icon}
+                      imageUrl={service.image_url}
                       delay={groupIndex * 0.1 + index * 0.05}
                       isVisible={isVisible}
                     />

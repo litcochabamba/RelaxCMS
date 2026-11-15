@@ -12,7 +12,10 @@ export interface AttractionMediaFolder {
 }
 
 const VIDEO_URL_PATTERN = /\.(mp4|webm|ogv|mov|m4v)(\?|#|$)/i;
-const UPLOADED_MEDIA_PATTERN = /\/storage\/v1\/object\/public\/media\//i;
+// Cloudinary (nuevo) o el bucket de Supabase (filas antiguas): en los dos
+// casos el archivo lo subió el hotel desde el CMS.
+const UPLOADED_MEDIA_PATTERN =
+  /\/storage\/v1\/object\/public\/media\/|res\.cloudinary\.com\/[^/]+\/(?:image|video)\/upload\//i;
 
 /** Indica si la URL corresponde a un archivo subido desde el CMS. */
 export function isUploadedMedia(url: string): boolean {
@@ -55,6 +58,59 @@ export function findAttractionFolder(
   if (!title) return null;
   const key = normalizeMediaKey(title);
   return folders.find((entry) => normalizeMediaKey(entry.folder) === key) || null;
+}
+
+/**
+ * Lee `attractions_media_folders` (id de atractivo → carpeta de public/atractivos).
+ * Lo usan la portada y el panel para resolver la misma foto.
+ */
+export function parseFolderOverrides(value?: string | null): Record<string, string> {
+  if (!value) return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, folder]) => typeof folder === 'string' && folder.trim() !== '')
+        .map(([id, folder]) => [id, String(folder).trim()])
+    );
+  } catch {
+    return {};
+  }
+}
+
+export interface AttractionMediaSource {
+  id: string;
+  title: string;
+  images?: Array<{ image_url: string } | null> | null;
+}
+
+/**
+ * Medios de un atractivo, con el mismo orden de prioridad que usa la portada:
+ * 1) lo subido desde el CMS, 2) la carpeta curada de `public/atractivos`,
+ * 3) cualquier fila de la base y 4) una imagen de muestra si se pide.
+ *
+ * Compartida para que el panel muestre exactamente la foto que se publica.
+ */
+export function resolveAttractionMedia(
+  attraction: AttractionMediaSource,
+  folders: AttractionMediaFolder[],
+  overrides: Record<string, string> = {},
+  demoUrl?: string
+): AttractionMediaFile[] {
+  const dbMedia: AttractionMediaFile[] = (attraction.images || [])
+    .map((image) => image?.image_url)
+    .filter((url): url is string => typeof url === 'string' && url !== '')
+    .map((url, index) => ({ name: `medio-${index + 1}`, url, type: inferMediaType(url) }));
+
+  const uploaded = dbMedia.filter((file) => isUploadedMedia(file.url));
+  if (uploaded.length > 0) return uploaded;
+
+  const folder = findAttractionFolder(folders, attraction.title, overrides[attraction.id]);
+  if (folder && folder.files.length > 0) return folder.files;
+
+  if (dbMedia.length > 0) return dbMedia;
+  return demoUrl ? [{ name: 'demo', url: demoUrl, type: 'image' }] : [];
 }
 
 /** Lee el manifiesto /atractivos-media.json con los medios por atractivo. */

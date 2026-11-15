@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,29 +9,41 @@ import ConfirmDialog from '../../components/common/ConfirmDialog';
 import CountryCodesEditor from '../../components/admin/CountryCodesEditor';
 import StayScheduleSettings from '../../components/admin/StayScheduleSettings';
 import ImageUploadButton from '../../components/admin/ImageUploadButton';
-import { accountsApi } from '../../api/client';
+import { accountsApi, db, uploadCloudinaryImage } from '../../api/client';
 import { sessionFetch } from '../../api/session';
 import { 
-  useHotels, useHeroSlides, 
-  useAmenities, useGallery,
+  useHotels, useHeroSlides, useHotelConfig, useUpsertHotelConfig, 
+  useServices, useGallery,
   useAttractionsWithImages, useAllComments, useUsers, useCreateGalleryItem, useDeleteGalleryItem,
   useSetCommentStatus, useDeleteComment, useDashboardStats,
-  useCreateHeroSlide, useUpdateHeroSlides, useCreateAmenity, useUpdateAmenity, useCreateAttraction, useUpdateAttraction,
+  useCreateHeroSlide, useUpdateHeroSlides, useCreateService, useUpdateService, useDeleteService, useCreateAttraction, useUpdateAttraction,
   useReservations, useRoomTypes, useRoomUnits, useRoomAvailabilityRanges, useSetReservationStatus, useUpdateRoomType,
   useAdminPromotions, adminPromotionsQueryOptions, useCreatePromotion, useUpdatePromotion, useDeletePromotion
 } from '../../hooks/useQueries';
-import type { Amenity, Attraction, AttractionImage, ClientAccount, HeroSlide, Hotel, Promotion, RoomTypeInventory, RoomUnit, User } from '../../types';
-import { AMENITY_ICON_OPTIONS, DEFAULT_AMENITY_ICON } from '../../utils/amenityIcons';
+import type { Service, Attraction, AttractionImage, ClientAccount, HeroSlide, Hotel, Promotion, RoomTypeInventory, RoomUnit, User } from '../../types';
+import { SERVICE_ICON_OPTIONS, DEFAULT_SERVICE_ICON, getServiceIcon } from '../../utils/serviceIcons';
+import {
+  parseServiceGroups,
+  serializeServiceGroups,
+  type ServiceGroupConfig,
+} from '../../components/home/ServicesSection';
+import {
+  inferMediaType,
+  parseFolderOverrides,
+  resolveAttractionMedia,
+  useAttractionsMedia,
+} from '../../hooks/useAttractionsMedia';
 import { 
   Building2, Bed, Tag, Star, Image, MapPin, 
   Mail, Users, XCircle, Plus, Edit, Trash2, Eye, 
-  ChevronDown, ExternalLink, Loader2, AlertCircle, Settings, Phone, Check, RefreshCw, X
+  ChevronDown, ExternalLink, Loader2, AlertCircle, Settings, Phone, Check, RefreshCw, X,
+  ImagePlus, Upload, Film, ArrowUp, ArrowDown, EyeOff
 } from 'lucide-react';
 
 const menuItems = [
   { id: 'dashboard', label: 'Inicio', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
   { id: 'rooms', label: 'Tipos de habitación', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm0 8a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zm12 0a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z' },
-  { id: 'amenities', label: 'Amenidades', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
+  { id: 'services', label: 'Servicios del hotel', icon: 'M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z' },
   { id: 'hero', label: 'Carrusel Hero', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
   { id: 'gallery', label: 'Galería', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
   { id: 'attractions', label: 'Atractivos Turísticos', icon: 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7' },
@@ -55,7 +67,8 @@ function DataSection({
   onAdd,
   addLabel,
   rowActions,
-  emptyHint
+  emptyHint,
+  actionsAlign = 'right',
 }: {
   title: string;
   description: string;
@@ -68,6 +81,8 @@ function DataSection({
   addLabel?: string;
   rowActions?: (item: any) => React.ReactNode;
   emptyHint?: string;
+  /** La columna Acciones se puede centrar cuando hay más de un botón. */
+  actionsAlign?: 'center' | 'right';
 }) {
   if (isLoading) {
     return (
@@ -133,7 +148,11 @@ function DataSection({
                       {col.label}
                     </th>
                   ))}
-                  <th className="text-right px-6 py-4 text-sm font-medium text-gray-500">
+                  <th
+                    className={`px-6 py-4 text-sm font-medium text-gray-500 ${
+                      actionsAlign === 'center' ? 'text-center' : 'text-right'
+                    }`}
+                  >
                     Acciones
                   </th>
                 </tr>
@@ -146,9 +165,15 @@ function DataSection({
                         {col.render ? col.render(item) : item[col.key]}
                       </td>
                     ))}
-                    <td className="px-6 py-4 text-right">
+                    <td className={`px-6 py-4 ${actionsAlign === 'center' ? 'text-center' : 'text-right'}`}>
                       {rowActions ? (
-                        <div className="flex items-center justify-end gap-2">{rowActions(item)}</div>
+                        <div
+                          className={`flex items-center gap-2 ${
+                            actionsAlign === 'center' ? 'justify-center' : 'justify-end'
+                          }`}
+                        >
+                          {rowActions(item)}
+                        </div>
                       ) : (
                         <span className="text-sm text-gray-300">—</span>
                       )}
@@ -183,18 +208,20 @@ function DataSection({
 }
 
 // Formulario reutilizable de alta y edición para las secciones simples del
-// panel (carrusel, amenidades y atractivos). Cada sección declara sus campos y
+// panel (carrusel, servicios y atractivos). Cada sección declara sus campos y
 // comparte el mismo diálogo, para que «Nuevo» y «Editar» se comporten igual.
 type RecordValues = Record<string, string | boolean>;
 
 type RecordField = {
   key: string;
   label: string;
-  type?: 'text' | 'textarea' | 'number' | 'select' | 'image' | 'checkbox';
+  type?: 'text' | 'textarea' | 'number' | 'select' | 'icon' | 'image' | 'checkbox';
   placeholder?: string;
   hint?: string;
   options?: string[];
   wide?: boolean;
+  /** En un select, deja escribir un valor que no está en la lista. */
+  allowCustom?: boolean;
 };
 
 function toNumber(value: string | boolean | undefined, fallback = 0) {
@@ -204,6 +231,55 @@ function toNumber(value: string | boolean | undefined, fallback = 0) {
 
 function toText(value: string | boolean | undefined) {
   return String(value ?? '').trim();
+}
+
+/** Selector de iconos con la vista previa a la izquierda de cada opción. */
+function IconSelect({ value, onChange }: { value: string; onChange: (icon: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const Current = getServiceIcon(value);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 transition-colors hover:border-gray-300"
+      >
+        <Current className="h-4 w-4 shrink-0 text-gray-600" />
+        <span className="flex-1 truncate text-left">{value}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+      </button>
+
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+            {SERVICE_ICON_OPTIONS.map((option) => {
+              const Icon = getServiceIcon(option);
+              const selected = option === value;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    onChange(option);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+                    selected ? 'bg-gray-100 font-medium text-gray-900' : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-gray-500" />
+                  <span className="flex-1 truncate">{option}</span>
+                  {selected ? <Check className="h-3.5 w-3.5 shrink-0" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 function RecordDialog({
@@ -219,6 +295,7 @@ function RecordDialog({
   error,
   submitLabel,
   imageFolder,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -232,6 +309,7 @@ function RecordDialog({
   error: string | null;
   submitLabel: string;
   imageFolder: string;
+  children?: React.ReactNode;
 }) {
   if (!open) return null;
 
@@ -282,18 +360,43 @@ function RecordDialog({
                       onChange={(event) => onChange(field.key, event.target.value)}
                       className={`${controlClass} resize-none`}
                     />
+                  ) : field.type === 'icon' ? (
+                    <IconSelect
+                      value={String(value ?? '') || DEFAULT_SERVICE_ICON}
+                      onChange={(icon) => onChange(field.key, icon)}
+                    />
                   ) : field.type === 'select' ? (
-                    <select
-                      value={String(value ?? '')}
-                      onChange={(event) => onChange(field.key, event.target.value)}
-                      className={controlClass}
-                    >
-                      {(field.options || []).map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="space-y-2">
+                      <select
+                        value={
+                          field.allowCustom && !(field.options || []).includes(String(value ?? ''))
+                            ? '__new__'
+                            : String(value ?? '')
+                        }
+                        onChange={(event) =>
+                          onChange(field.key, event.target.value === '__new__' ? '' : event.target.value)
+                        }
+                        className={controlClass}
+                      >
+                        {(field.options || []).map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                        {field.allowCustom ? <option value="__new__">Otro grupo…</option> : null}
+                      </select>
+                      {field.allowCustom &&
+                      !(field.options || []).includes(String(value ?? '')) ? (
+                        <input
+                          type="text"
+                          value={String(value ?? '')}
+                          placeholder={field.placeholder || 'Nombre del grupo'}
+                          onChange={(event) => onChange(field.key, event.target.value)}
+                          className={controlClass}
+                          autoFocus
+                        />
+                      ) : null}
+                    </div>
                   ) : field.type === 'image' ? (
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
@@ -346,6 +449,8 @@ function RecordDialog({
               );
             })}
           </div>
+
+          {children ? <div className="border-t border-gray-100 pt-4">{children}</div> : null}
 
           {error ? (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
@@ -638,7 +743,6 @@ function RoomsSection() {
   const queryClient = useQueryClient();
   const updateType = useUpdateRoomType();
   const [importOpen, setImportOpen] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [imageSavingId, setImageSavingId] = useState<string | null>(null);
 
   const saveTypeImage = async (type: RoomTypeInventory, url: string) => {
@@ -650,18 +754,6 @@ function RoomsSection() {
       toast.error('No se pudo guardar la foto del tipo');
     } finally {
       setImageSavingId(null);
-    }
-  };
-
-  const toggleActive = async (type: RoomTypeInventory) => {
-    setTogglingId(type.id);
-    try {
-      await updateType.mutateAsync({ id: type.id, data: { active: !type.active } });
-      toast.success(type.active ? `«${type.name}» oculto` : `«${type.name}» publicado`);
-    } catch {
-      toast.error('No se pudo actualizar el tipo');
-    } finally {
-      setTogglingId(null);
     }
   };
 
@@ -748,7 +840,7 @@ function RoomsSection() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {['Tipo', 'Unidades', 'Capacidad', 'Precio', 'Estado'].map((label) => (
+                      {['Tipo', 'Unidades', 'Capacidad', 'Precio'].map((label) => (
                         <th key={label} className="text-left px-6 py-3 text-sm font-medium text-gray-500">
                           {label}
                         </th>
@@ -799,29 +891,6 @@ function RoomsSection() {
                           <td className="px-6 py-3 text-sm text-gray-700">{capacity}</td>
                           <td className="px-6 py-3 text-sm text-gray-700">
                             {type.price ? `Bs. ${type.price.toLocaleString('es-BO')}` : 'Consultar'}
-                          </td>
-                          <td className="px-6 py-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span
-                                className={`px-2 py-1 rounded-full text-xs ${
-                                  type.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                                }`}
-                              >
-                                {type.active ? 'Activo' : 'Oculto'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => void toggleActive(type)}
-                                disabled={togglingId === type.id}
-                                className="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-900 hover:underline disabled:opacity-50"
-                              >
-                                {togglingId === type.id
-                                  ? 'Guardando...'
-                                  : type.active
-                                    ? 'Ocultar'
-                                    : 'Publicar'}
-                              </button>
-                            </div>
                           </td>
                         </tr>
                       );
@@ -900,6 +969,7 @@ interface PmsImportPreview {
       reason: string;
       is_new: boolean;
     }>;
+    enable?: Array<{ pms_id: number; name: string; type_name: string }>;
   };
   missing: { types: Array<{ pms_id: number; name: string }>; units: Array<{ pms_id: number; name: string }> };
 }
@@ -972,6 +1042,7 @@ function PmsImportDialog({
               created_units: number;
               updated_units: number;
               disabled_units?: number;
+              enabled_units?: number;
               errors: string[];
             } | null;
           }
@@ -983,7 +1054,8 @@ function PmsImportDialog({
       } else {
         toast.success(
           `Importado: ${data?.created_types ?? 0} tipos y ${data?.created_units ?? 0} unidades nuevos` +
-            (data?.disabled_units ? ` · ${data.disabled_units} deshabilitadas` : '')
+            (data?.disabled_units ? ` · ${data.disabled_units} deshabilitadas` : '') +
+            (data?.enabled_units ? ` · ${data.enabled_units} reactivadas` : '')
         );
       }
       onApplied();
@@ -1000,6 +1072,7 @@ function PmsImportDialog({
   const newUnits = preview?.units.create ?? [];
   const updatedUnits = preview?.units.update ?? [];
   const unusableUnits = preview?.units.unusable ?? [];
+  const enabledUnits = preview?.units.enable ?? [];
   const skipped = preview?.units.skipped ?? [];
   const missingTypes = preview?.missing.types ?? [];
   const missingUnits = preview?.missing.units ?? [];
@@ -1015,7 +1088,7 @@ function PmsImportDialog({
             <h3 className="font-serif text-xl text-gray-900">Importar desde RelaxPMS</h3>
             <p className="mt-1 text-sm text-gray-500">
               Trae los tipos y habitaciones creados en el PMS. No borra nada y conserva fotos, precios,
-              descripciones y amenidades del CMS.
+              descripciones y servicios del CMS.
             </p>
           </div>
           <button
@@ -1130,6 +1203,27 @@ function PmsImportDialog({
                     </div>
                   ) : null}
 
+                  {enabledUnits.length > 0 ? (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                      <p className="text-sm font-medium text-emerald-900">
+                        {enabledUnits.length} unidad(es) vuelven a publicarse
+                      </p>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        El PMS ya las reporta utilizables: salieron de mantenimiento o fuera de servicio.
+                      </p>
+                      <ul className="mt-2 space-y-1 text-xs text-emerald-900">
+                        {enabledUnits.slice(0, 8).map((unit) => (
+                          <li key={unit.pms_id}>
+                            {unit.name} ({unit.type_name})
+                          </li>
+                        ))}
+                        {enabledUnits.length > 8 ? (
+                          <li className="text-emerald-700">y {enabledUnits.length - 8} más…</li>
+                        ) : null}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   {updatedUnits.length > 0 ? (
                     <div className="rounded-xl border border-gray-200 p-4">
                       <p className="text-sm font-medium text-gray-900">
@@ -1201,31 +1295,64 @@ function PmsImportDialog({
   );
 }
 
-// Amenities Section
-function AmenitiesSection() {
+// Servicios del hotel
+function ServicesSection() {
   const { data: hotels } = useHotels();
   const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
   const hotelId = hotel?.id || '';
-  // Las amenidades viven en Supabase (`amenidades`), no llegan del PMS: el
+  // Las servicios viven en Supabase (`servicios`), no llegan del PMS: el
   // endpoint de RelaxPMS solo publica habitaciones, tarifas y reservas.
-  const { data: amenities, isLoading, error } = useAmenities(hotelId, true);
-  const createAmenity = useCreateAmenity();
-  const updateAmenity = useUpdateAmenity();
+  const { data: services, isLoading, error } = useServices(hotelId, true);
+  const createService = useCreateService();
+  const updateService = useUpdateService();
+  const deleteService = useDeleteService();
+  const upsertConfig = useUpsertHotelConfig();
+  const { data: configsData } = useHotelConfig(hotelId);
+  const [groups, setGroups] = useState<ServiceGroupConfig[]>([]);
+  const [newGroup, setNewGroup] = useState('');
+  const [groupToRemove, setGroupToRemove] = useState<ServiceGroupConfig | null>(null);
+  // Por defecto los grupos se ven expandidos; este arreglo guarda los plegados.
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
+  // Última configuración leída del servidor: evita pisar el estado local con
+  // cada refetch que dispara el propio guardado.
+  const lastGroupsSignature = useRef<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [values, setValues] = useState<RecordValues>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
 
-  const items = (Array.isArray(amenities) ? amenities : []) as Amenity[];
-  const busy = createAmenity.isPending || updateAmenity.isPending;
+  const items = (Array.isArray(services) ? services : []) as Service[];
+  const groupsConfigValue =
+    ((Array.isArray(configsData) ? configsData : []) as Array<{ key: string; value: string }>).find(
+      (config) => config.key === 'services_groups'
+    )?.value || '';
+  const categoriesInUse = Array.from(new Set(items.map((item) => item.category).filter(Boolean)));
+  const unconfiguredGroups = categoriesInUse.filter(
+    (category) => !groups.some((group) => group.category === category)
+  );
+
+  // Una sola lista para la tabla: los grupos configurados (aunque estén vacíos)
+  // y al final las categorías que existen en servicios pero no en la config.
+  const displayGroups: Array<ServiceGroupConfig & { configured: boolean }> = [
+    ...groups.map((group) => ({ ...group, configured: true })),
+    ...unconfiguredGroups.map((category) => ({ category, visible: true, configured: false })),
+  ];
+
+  useEffect(() => {
+    if (lastGroupsSignature.current === groupsConfigValue) return;
+    lastGroupsSignature.current = groupsConfigValue;
+    setGroups(parseServiceGroups(groupsConfigValue) || []);
+  }, [groupsConfigValue]);
+  const busy = createService.isPending || updateService.isPending;
   const categories = Array.from(new Set(items.map((item) => item.category).filter(Boolean)));
 
-  const openNew = () => {
+  const openNew = (initialCategory?: string) => {
     setEditingId(null);
     setValues({
       name: '',
-      category: categories[0] || 'Servicios',
-      icon: DEFAULT_AMENITY_ICON,
+      category: initialCategory || displayGroups[0]?.category || categories[0] || 'Servicios',
+      icon: DEFAULT_SERVICE_ICON,
       description: '',
       image_url: '',
       order: String(items.length),
@@ -1235,16 +1362,16 @@ function AmenitiesSection() {
     setFormOpen(true);
   };
 
-  const openEdit = (amenity: Amenity) => {
-    setEditingId(amenity.id);
+  const openEdit = (service: Service) => {
+    setEditingId(service.id);
     setValues({
-      name: amenity.name || '',
-      category: amenity.category || 'Servicios',
-      icon: amenity.icon || DEFAULT_AMENITY_ICON,
-      description: amenity.description || '',
-      image_url: amenity.image_url || '',
-      order: String(amenity.order ?? 0),
-      active: amenity.active,
+      name: service.name || '',
+      category: service.category || 'Servicios',
+      icon: service.icon || DEFAULT_SERVICE_ICON,
+      description: service.description || '',
+      image_url: service.image_url || '',
+      order: String(service.order ?? 0),
+      active: service.active,
     });
     setFormError(null);
     setFormOpen(true);
@@ -1274,7 +1401,7 @@ function AmenitiesSection() {
     const payload = {
       name,
       category,
-      icon: toText(values.icon) || DEFAULT_AMENITY_ICON,
+      icon: toText(values.icon) || DEFAULT_SERVICE_ICON,
       description: toText(values.description) || null,
       image_url: toText(values.image_url) || null,
       order: toNumber(values.order, items.length),
@@ -1282,65 +1409,411 @@ function AmenitiesSection() {
     };
     try {
       if (editingId) {
-        await updateAmenity.mutateAsync({ id: editingId, data: payload });
-        toast.success('Amenidad actualizada');
+        await updateService.mutateAsync({ id: editingId, data: payload });
+        toast.success('Servicio actualizado');
       } else {
-        await createAmenity.mutateAsync({ hotel_id: hotelId, value: null, ...payload });
-        toast.success('Amenidad creada');
+        await createService.mutateAsync({ hotel_id: hotelId, value: null, ...payload });
+        toast.success('Servicio creado');
       }
       setFormOpen(false);
       setFormError(null);
     } catch (mutationError) {
       setFormError(
-        mutationError instanceof Error ? mutationError.message : 'No se pudo guardar la amenidad'
+        mutationError instanceof Error ? mutationError.message : 'No se pudo guardar el servicio'
+      );
+    }
+  };
+
+  // Los grupos viven en `configuracion_hotel.services_groups`: el orden del
+  // arreglo es el de la portada y `visible` decide si se muestra. Es la misma
+  // clave que edita el panel flotante, así las dos vistas quedan iguales.
+  const persistGroups = async (next: ServiceGroupConfig[]) => {
+    if (!hotelId) return;
+    const previous = groups;
+    const serialized = serializeServiceGroups(next);
+    setGroups(next);
+    try {
+      await upsertConfig.mutateAsync({
+        hotelId,
+        key: 'services_groups',
+        value: serialized,
+        group: 'sections',
+      });
+      lastGroupsSignature.current = serialized;
+    } catch {
+      setGroups(previous);
+      toast.error('No se pudieron guardar los grupos');
+    }
+  };
+
+  const addGroup = (category?: string) => {
+    const name = (category ?? newGroup).trim();
+    if (!name) return;
+    if (groups.some((group) => group.category.toLowerCase() === name.toLowerCase())) {
+      toast.error('Ese grupo ya existe');
+      return;
+    }
+    void persistGroups([...groups, { category: name, visible: true }]);
+    setNewGroup('');
+  };
+
+  const moveGroup = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= groups.length) return;
+    const next = [...groups];
+    [next[index], next[target]] = [next[target], next[index]];
+    void persistGroups(next);
+  };
+
+  const toggleGroup = (index: number) => {
+    void persistGroups(
+      groups.map((group, position) =>
+        position === index ? { ...group, visible: !group.visible } : group
+      )
+    );
+  };
+
+  const toggleGroupCollapsed = (category: string) => {
+    setCollapsedGroups((current) =>
+      current.includes(category)
+        ? current.filter((item) => item !== category)
+        : [...current, category]
+    );
+  };
+
+  const confirmRemoveGroup = async () => {
+    if (!groupToRemove) return;
+    const next = groups.filter((group) => group.category !== groupToRemove.category);
+    setGroupToRemove(null);
+    await persistGroups(next);
+  };
+
+  const confirmDelete = async () => {
+    if (!serviceToDelete) return;
+    try {
+      await deleteService.mutateAsync(serviceToDelete.id);
+      toast.success(`«${serviceToDelete.name}» eliminado`);
+      setServiceToDelete(null);
+    } catch (mutationError) {
+      toast.error(
+        mutationError instanceof Error ? mutationError.message : 'No se pudo eliminar el servicio'
       );
     }
   };
 
   return (
     <>
-      <DataSection
-        title="Amenidades"
-        description="Gestiona las amenidades del hotel."
-        isLoading={isLoading}
-        error={error}
-        data={items}
-        columns={[
-          { key: 'name', label: 'Nombre' },
-          { key: 'category', label: 'Categoría' },
-          { key: 'icon', label: 'Icono' },
-          { key: 'active', label: 'Estado', render: (item: any) => (
-            <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-              {item.active ? 'Activa' : 'Inactiva'}
-            </span>
-          )},
-        ]}
-        emptyMessage="No hay amenidades registradas"
-        onAdd={openNew}
-        rowActions={(item: Amenity) => <EditButton onClick={() => openEdit(item)} />}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-serif text-gray-900">Servicios del hotel</h2>
+            <p className="text-gray-500">
+              Gestiona los servicios del hotel y los grupos que se ven en la portada.
+            </p>
+          </div>
+          <button
+            onClick={() => openNew()}
+            className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo
+          </button>
+        </div>
+
+        {isLoading ? (
+          <div className="rounded-xl border border-gray-100 bg-white p-8">
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              <span className="ml-3 text-gray-600">Cargando servicios...</span>
+            </div>
+          </div>
+        ) : error ? (
+          <div className="rounded-xl border border-gray-100 bg-white p-8">
+            <div className="py-12 text-center">
+              <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
+              <h3 className="mb-2 text-lg font-medium text-gray-900">Error al cargar servicios</h3>
+              <p className="text-sm text-gray-500">{error.message}</p>
+            </div>
+          </div>
+        ) : displayGroups.length === 0 ? (
+          <div className="rounded-xl border border-gray-100 bg-white p-12 text-center">
+            <h3 className="mb-2 text-lg font-medium text-gray-900">No hay servicios registrados</h3>
+            <p className="mb-6 text-sm text-gray-500">
+              Creá la primera servicio para mostrarla en la portada.
+            </p>
+            <button
+              onClick={() => openNew()}
+              className="rounded-lg bg-gray-900 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-gray-800"
+            >
+              Crear servicio
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-500">Nombre</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-500">Icono</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-500">Estado</th>
+                    <th className="px-6 py-4 text-center text-sm font-medium text-gray-500">
+                      Acciones
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayGroups.map((group) => {
+                    const groupItems = items.filter((item) => item.category === group.category);
+                    const collapsed = collapsedGroups.includes(group.category);
+                    const groupIndex = groups.findIndex(
+                      (configured) => configured.category === group.category
+                    );
+                    const GroupIcon = group.visible ? Eye : EyeOff;
+                    return (
+                      <Fragment key={`grupo-${group.category}`}>
+                        <tr className="border-b border-gray-100 bg-gray-50/80">
+                          <td colSpan={4} className="px-6 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleGroupCollapsed(group.category)}
+                                title={collapsed ? 'Expandir grupo' : 'Contraer grupo'}
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-200/70"
+                              >
+                                <ChevronDown
+                                  className={`h-4 w-4 transition-transform ${
+                                    collapsed ? '-rotate-90' : ''
+                                  }`}
+                                />
+                              </button>
+                              <span
+                                className={`text-sm font-medium ${
+                                  group.visible ? 'text-gray-900' : 'text-gray-400'
+                                }`}
+                              >
+                                {group.category}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {groupItems.length}{' '}
+                                {groupItems.length === 1 ? 'servicio' : 'servicios'}
+                              </span>
+                              {group.configured && !group.visible ? (
+                                <span className="rounded-full bg-gray-200/70 px-2 py-0.5 text-[10px] font-medium text-gray-600">
+                                  Oculto en la portada
+                                </span>
+                              ) : null}
+                              {group.configured ? null : (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                                  Sin configurar
+                                </span>
+                              )}
+                              <span className="flex-1" />
+                              {group.configured ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => openNew(group.category)}
+                                    title={`Nuevo servicio en «${group.category}»`}
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-200/70"
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleGroup(groupIndex)}
+                                    disabled={upsertConfig.isPending}
+                                    title={
+                                      group.visible ? 'Ocultar en la portada' : 'Mostrar en la portada'
+                                    }
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-200/70 disabled:opacity-40"
+                                  >
+                                    <GroupIcon className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveGroup(groupIndex, -1)}
+                                    disabled={groupIndex === 0 || upsertConfig.isPending}
+                                    title="Subir grupo"
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-200/70 disabled:opacity-30"
+                                  >
+                                    <ArrowUp className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveGroup(groupIndex, 1)}
+                                    disabled={
+                                      groupIndex === groups.length - 1 || upsertConfig.isPending
+                                    }
+                                    title="Bajar grupo"
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-200/70 disabled:opacity-30"
+                                  >
+                                    <ArrowDown className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setGroupToRemove(group)}
+                                    disabled={upsertConfig.isPending}
+                                    title="Quitar grupo"
+                                    className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => addGroup(group.category)}
+                                  disabled={upsertConfig.isPending}
+                                  title="Agregar esta categoría a los grupos"
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-gray-300 hover:text-gray-900 disabled:opacity-50"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Agregar a grupos
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {collapsed ? null : groupItems.length === 0 ? (
+                          <tr className="border-b border-gray-50">
+                            <td colSpan={4} className="px-12 py-3 text-xs text-gray-400">
+                              Todavía no tiene servicios. Asignale esta categoría a un servicio
+                              para que aparezca en la portada.
+                            </td>
+                          </tr>
+                        ) : (
+                          groupItems.map((item) => {
+                            const ServiceIcon = getServiceIcon(item.icon);
+                            return (
+                              <tr
+                                key={item.id}
+                                className="border-b border-gray-50 transition-colors hover:bg-gray-50"
+                              >
+                                <td className="px-6 py-4 text-sm text-gray-900">{item.name}</td>
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <span className="inline-flex items-center gap-2">
+                                    <ServiceIcon className="h-4 w-4 text-gray-400" />
+                                    {item.icon}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span
+                                    className={`rounded-full px-2 py-1 text-xs ${
+                                      item.active
+                                        ? 'bg-green-100 text-green-800'
+                                        : 'bg-gray-100 text-gray-800'
+                                    }`}
+                                  >
+                                    {item.active ? 'Activa' : 'Inactiva'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <EditButton onClick={() => openEdit(item)} />
+                                    <button
+                                      type="button"
+                                      onClick={() => setServiceToDelete(item)}
+                                      disabled={deleteService.isPending}
+                                      title="Eliminar"
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                      Eliminar
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 px-6 py-4">
+              <div className="flex flex-1 flex-wrap items-center gap-2">
+                <input
+                  value={newGroup}
+                  onChange={(event) => setNewGroup(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      addGroup();
+                    }
+                  }}
+                  placeholder="Nuevo grupo (por ejemplo, Servicios)"
+                  className="min-w-[200px] flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+                />
+                <button
+                  type="button"
+                  onClick={() => addGroup()}
+                  disabled={!newGroup.trim() || upsertConfig.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                  Agregar grupo
+                </button>
+              </div>
+              <p className="w-full text-xs text-gray-400">
+                El orden de los grupos es el que se ve en la portada. Un grupo se muestra solo si
+                tiene servicios activos asignados.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={Boolean(serviceToDelete)}
+        title="Eliminar servicio"
+        description={`¿Eliminar «${serviceToDelete?.name || ''}»? Deja de mostrarse en la página principal y esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar servicio"
+        busy={deleteService.isPending}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => {
+          if (!deleteService.isPending) setServiceToDelete(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(groupToRemove)}
+        title="Quitar grupo de la lista"
+        description={`¿Quitar «${groupToRemove?.category || ''}» de los grupos configurados? Los servicios no se borran: si esa categoría todavía tiene servicios, el grupo vuelve a aparecer al final y visible. Para ocultarlo del sitio, usá el ojo.`}
+        confirmLabel="Quitar grupo"
+        busy={upsertConfig.isPending}
+        onConfirm={() => void confirmRemoveGroup()}
+        onCancel={() => {
+          if (!upsertConfig.isPending) setGroupToRemove(null);
+        }}
       />
 
       <RecordDialog
         open={formOpen}
-        title={editingId ? 'Editar amenidad' : 'Nueva amenidad'}
+        title={editingId ? 'Editar servicio' : 'Nuevo servicio'}
         description={
           editingId
-            ? 'Actualiza los datos de la amenidad.'
+            ? 'Actualiza los datos de el servicio.'
             : 'Agrega un servicio o comodidad del hotel.'
         }
-        submitLabel={editingId ? 'Guardar cambios' : 'Crear amenidad'}
-        imageFolder="relaxweb/amenidades"
+        submitLabel={editingId ? 'Guardar cambios' : 'Crear servicio'}
+        imageFolder="relaxweb/servicios"
         fields={[
           { key: 'name', label: 'Nombre', placeholder: 'Wi-Fi', wide: true },
           {
             key: 'category',
-            label: 'Categoría',
-            placeholder: 'Servicios',
-            hint: categories.length
-              ? `Categorías actuales: ${categories.join(', ')}. Una categoría nueva crea un grupo en el sitio.`
-              : 'Agrupa las amenidades en el sitio (por ejemplo, Servicios).',
+            label: 'Grupo',
+            type: 'select',
+            options: displayGroups.map((group) => group.category),
+            allowCustom: true,
+            placeholder: 'Nombre del grupo',
+            hint: 'El grupo es el encabezado de la tabla y el que se ve en la portada.',
           },
-          { key: 'icon', label: 'Icono', type: 'select', options: AMENITY_ICON_OPTIONS },
+          { key: 'icon', label: 'Icono', type: 'icon' },
           { key: 'description', label: 'Descripción', type: 'textarea', wide: true },
           { key: 'image_url', label: 'Foto (opcional)', type: 'image', wide: true },
           { key: 'order', label: 'Orden', type: 'number', hint: 'Menor número aparece primero.' },
@@ -1465,6 +1938,29 @@ function GallerySection() {
    * ventana consultada. Mantenimiento y fuera de servicio bloquean la ventana
    * entera, así que se muestran como «No disponible» y no con fechas.
    */
+  /* Estado operativo del PMS por unidad: solo llega con sesión de personal. */
+  const pmsStates = availability?.states ?? [];
+
+  /** Estado real de la unidad en el PMS (Disponible, Sucia, Reservada…). */
+  const unitState = (type: RoomTypeInventory, unit: RoomUnit) => {
+    const prefix = type.grupo === 'departamento' ? 'Departamento' : 'Habitación';
+    const label = `${type.name} · ${prefix} ${unitLabel(unit.name)}`.trim();
+    return pmsStates.find((state) => state.room_type === label) ?? null;
+  };
+
+  /** Colores por `rooms.current_status`: 0 disponible … 5 fuera de servicio. */
+  const stateChip = (status: number | null): string => {
+    switch (status) {
+      case 0: return 'bg-green-100 text-green-800';
+      case 1: return 'bg-red-100 text-red-700';
+      case 2: return 'bg-amber-100 text-amber-800';
+      case 3: return 'bg-slate-200 text-slate-700';
+      case 4: return 'bg-blue-100 text-blue-800';
+      case 5: return 'bg-gray-200 text-gray-700';
+      default: return 'bg-gray-100 text-gray-600';
+    }
+  };
+
   const unitBusy = (type: RoomTypeInventory, unit: RoomUnit): string | null => {
     const prefix = type.grupo === 'departamento' ? 'Departamento' : 'Habitación';
     const label = `${type.name} · ${prefix} ${unitLabel(unit.name)}`.trim();
@@ -1730,11 +2226,17 @@ function GallerySection() {
                                     <span>
                                       {unit.capacity || 1} {unit.capacity === 1 ? 'persona' : 'personas'}
                                     </span>
-                                    {busy ? (
-                                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-red-700">
-                                        {busy}
-                                      </span>
-                                    ) : null}
+                                    {(() => {
+                                      const state = unitState(type, unit);
+                                      const text = state?.status_label ?? busy ?? 'Disponible';
+                                      return (
+                                        <span
+                                          className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${stateChip(state?.status ?? null)}`}
+                                        >
+                                          {text}
+                                        </span>
+                                      );
+                                    })()}
                                   </p>
                                 </div>
                               );
@@ -1872,17 +2374,63 @@ function GallerySection() {
 }
 
 // Attractions Section
+type PendingMedia = { url: string; name: string; type: 'image' | 'video' };
+
+// Miniatura de la tabla: si la URL guardada ya no responde, se muestra un
+// marcador en vez del icono roto.
+function AttractionThumb({ url, alt }: { url: string; alt: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="flex w-12 h-9 flex-shrink-0 items-center justify-center rounded bg-gray-100 text-gray-300">
+        <Image className="h-4 w-4" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={alt}
+      onError={() => setFailed(true)}
+      className="w-12 h-9 object-cover rounded flex-shrink-0"
+    />
+  );
+}
+
 function AttractionsSection() {
   const { data: hotels } = useHotels();
   const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
   const hotelId = hotel?.id || '';
   const { data: attractions, isLoading, error } = useAttractionsWithImages(hotelId, true);
+  // Las fotos curadas viven en public/atractivos, no en la base: se resuelven
+  // igual que en la portada para que la tabla muestre la imagen publicada.
+  const { folders } = useAttractionsMedia();
+  const { data: configsData } = useHotelConfig(hotelId);
+  // Carpetas asignadas a mano en la portada (attractions_media_folders):
+  // sin esto la tabla buscaría la carpeta por título y mostraría otra foto.
+  const folderOverrides = useMemo(() => {
+    const configs = (Array.isArray(configsData) ? configsData : []) as Array<{
+      key: string;
+      value: string;
+    }>;
+    return parseFolderOverrides(
+      configs.find((config) => config.key === 'attractions_media_folders')?.value
+    );
+  }, [configsData]);
   const createAttraction = useCreateAttraction();
   const updateAttraction = useUpdateAttraction();
+  const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [values, setValues] = useState<RecordValues>({});
   const [formError, setFormError] = useState<string | null>(null);
+  // Medios ya guardados del atractivo que se está editando.
+  const [existingMedia, setExistingMedia] = useState<AttractionImage[]>([]);
+  // Medios recién subidos a Cloudinary que todavía no tienen atractivo: se
+  // insertan en `atractivo_imagenes` cuando el atractivo ya tiene id.
+  const [pendingMedia, setPendingMedia] = useState<PendingMedia[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [removingMediaId, setRemovingMediaId] = useState<string | null>(null);
 
   const items = (Array.isArray(attractions) ? attractions : []) as Array<
     Attraction & { images?: AttractionImage[] }
@@ -1891,6 +2439,8 @@ function AttractionsSection() {
 
   const openNew = () => {
     setEditingId(null);
+    setExistingMedia([]);
+    setPendingMedia([]);
     setValues({
       title: '',
       description: '',
@@ -1904,8 +2454,10 @@ function AttractionsSection() {
     setFormOpen(true);
   };
 
-  const openEdit = (attraction: Attraction) => {
+  const openEdit = (attraction: Attraction & { images?: AttractionImage[] }) => {
     setEditingId(attraction.id);
+    setExistingMedia(attraction.images || []);
+    setPendingMedia([]);
     setValues({
       title: attraction.title || '',
       description: attraction.description || '',
@@ -1926,9 +2478,53 @@ function AttractionsSection() {
   };
 
   const closeForm = () => {
-    if (busy) return;
+    if (busy || uploading) return;
     setFormOpen(false);
     setFormError(null);
+    setPendingMedia([]);
+    setExistingMedia([]);
+  };
+
+  // Sube a Cloudinary antes de guardar: el archivo no depende del atractivo,
+  // solo su fila en `atractivo_imagenes`.
+  const uploadMediaFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    const added: PendingMedia[] = [];
+    const failures: string[] = [];
+    for (const file of Array.from(files)) {
+      const { upload, error: uploadError } = await uploadCloudinaryImage(file, 'relaxweb/atractivos');
+      if (uploadError || !upload) {
+        failures.push(uploadError || `No se pudo subir ${file.name}`);
+        continue;
+      }
+      added.push({
+        url: upload.url,
+        name: file.name,
+        type: file.type.startsWith('video/') ? 'video' : 'image',
+      });
+    }
+    setUploading(false);
+    if (added.length > 0) setPendingMedia((prev) => [...prev, ...added]);
+    if (failures.length > 0) toast.error(failures[0]);
+    else toast.success(added.length === 1 ? 'Archivo listo' : `${added.length} archivos listos`);
+  };
+
+  const removeExistingMedia = async (image: AttractionImage) => {
+    setRemovingMediaId(image.id);
+    try {
+      const { error: removeError } = await db.delete('atractivo_imagenes', { id: image.id });
+      if (removeError) throw new Error(removeError);
+      setExistingMedia((prev) => prev.filter((item) => item.id !== image.id));
+      await queryClient.invalidateQueries({ queryKey: ['attractionsWithImages'] });
+      toast.success('Archivo quitado');
+    } catch (removalError) {
+      toast.error(
+        removalError instanceof Error ? removalError.message : 'No se pudo quitar el archivo'
+      );
+    } finally {
+      setRemovingMediaId(null);
+    }
   };
 
   const coordinate = (value: string | boolean | undefined) => {
@@ -1956,21 +2552,91 @@ function AttractionsSection() {
       active: Boolean(values.active),
     };
     try {
+      let attractionId: string | null = editingId;
       if (editingId) {
         await updateAttraction.mutateAsync({ id: editingId, data: payload });
-        toast.success('Atractivo actualizado');
       } else {
-        await createAttraction.mutateAsync({ hotel_id: hotelId, ...payload });
-        toast.success('Atractivo creado');
+        const created = await createAttraction.mutateAsync({ hotel_id: hotelId, ...payload });
+        attractionId = created?.id ?? null;
+        // El atractivo ya quedó creado. Si después falla un archivo, el
+        // formulario sigue abierto pero ahora edita esta misma fila, así que
+        // reintentar no genera un duplicado.
+        if (attractionId) setEditingId(attractionId);
       }
+
+      // Los medios se guardan uno por uno: un archivo que falla no invalida los
+      // demás ni vuelve a crear el atractivo.
+      const failedFiles: PendingMedia[] = [];
+      const savedMedia: AttractionImage[] = [];
+      let nextOrder = existingMedia.length;
+
+      if (attractionId) {
+        for (const item of pendingMedia) {
+          const { data: inserted, error: mediaError } = await db.insert<AttractionImage>(
+            'atractivo_imagenes',
+            {
+              attraction_id: attractionId,
+              image_url: item.url,
+              alt_text: item.name,
+              order: nextOrder,
+            }
+          );
+          if (mediaError) {
+            failedFiles.push(item);
+            continue;
+          }
+          nextOrder += 1;
+          if (inserted) savedMedia.push(inserted);
+        }
+      } else if (pendingMedia.length > 0) {
+        failedFiles.push(...pendingMedia);
+      }
+
+      if (savedMedia.length > 0) {
+        setExistingMedia((prev) => [...prev, ...savedMedia]);
+        await queryClient.invalidateQueries({ queryKey: ['attractionsWithImages'] });
+      }
+
+      // Solo quedan pendientes los archivos que no se guardaron.
+      setPendingMedia(failedFiles);
+
+      if (failedFiles.length > 0) {
+        setFormError(
+          `El atractivo se guardó, pero no se pudieron guardar estos archivos: ${failedFiles
+            .map((item) => item.name)
+            .join(', ')}. Reintentá: se suben sin crear un atractivo nuevo.`
+        );
+        return;
+      }
+
+      toast.success(editingId ? 'Atractivo actualizado' : 'Atractivo creado');
       setFormOpen(false);
       setFormError(null);
+      setPendingMedia([]);
+      setExistingMedia([]);
     } catch (mutationError) {
       setFormError(
         mutationError instanceof Error ? mutationError.message : 'No se pudo guardar el atractivo'
       );
     }
   };
+
+  // Fotos curadas de public/atractivos para el atractivo que se edita: no son
+  // filas de la base, así que se muestran como referencia de solo lectura.
+  const editingAttraction = editingId ? items.find((item) => item.id === editingId) || null : null;
+  const folderMedia = useMemo(
+    () =>
+      editingAttraction
+        ? resolveAttractionMedia(
+            { id: editingAttraction.id, title: editingAttraction.title, images: [] },
+            folders,
+            folderOverrides
+          )
+        : [],
+    [editingAttraction, folders, folderOverrides]
+  );
+
+  const mediaCount = existingMedia.length + pendingMedia.length + folderMedia.length;
 
   return (
     <>
@@ -1984,20 +2650,23 @@ function AttractionsSection() {
           {
             key: 'title',
             label: 'Nombre',
-            render: (item: any) => (
-              <div className="flex items-center gap-3 min-w-0">
-                {item.images?.[0]?.image_url ? (
-                  <img
-                    src={item.images[0].image_url}
-                    alt={item.title}
-                    className="w-12 h-9 object-cover rounded flex-shrink-0"
-                  />
-                ) : (
-                  <div className="w-12 h-9 rounded bg-gray-100 flex-shrink-0" />
-                )}
-                <span className="font-medium text-gray-900 truncate">{item.title}</span>
-              </div>
-            ),
+            render: (item: any) => {
+              const thumb = resolveAttractionMedia(item, folders, folderOverrides)[0];
+              return (
+                <div className="flex items-center gap-3 min-w-0">
+                  {!thumb ? (
+                    <div className="w-12 h-9 rounded bg-gray-100 flex-shrink-0" />
+                  ) : thumb.type === 'video' ? (
+                    <div className="flex w-12 h-9 flex-shrink-0 items-center justify-center rounded bg-gray-100 text-gray-400">
+                      <Film className="h-4 w-4" />
+                    </div>
+                  ) : (
+                    <AttractionThumb url={thumb.url} alt={item.title} />
+                  )}
+                  <span className="font-medium text-gray-900 truncate">{item.title}</span>
+                </div>
+              );
+            },
           },
           { key: 'description', label: 'Descripción', render: (item: any) => (
             <span className="line-clamp-1">{item.description}</span>
@@ -2013,7 +2682,7 @@ function AttractionsSection() {
         ]}
         emptyMessage="No hay atractivos turísticos registrados"
         onAdd={openNew}
-        rowActions={(item: Attraction) => <EditButton onClick={() => openEdit(item)} />}
+        rowActions={(item: any) => <EditButton onClick={() => openEdit(item)} />}
       />
 
       <RecordDialog
@@ -2021,8 +2690,8 @@ function AttractionsSection() {
         title={editingId ? 'Editar atractivo' : 'Nuevo atractivo'}
         description={
           editingId
-            ? 'Actualiza los datos del atractivo. Las fotos se administran desde el panel flotante del sitio.'
-            : 'Agrega un lugar de interés cercano. Las fotos se cargan después desde el panel flotante.'
+            ? 'Actualiza los datos y los archivos del atractivo.'
+            : 'Agrega un lugar de interés cercano, con sus fotos o videos.'
         }
         submitLabel={editingId ? 'Guardar cambios' : 'Crear atractivo'}
         imageFolder="relaxweb/atractivos"
@@ -2041,7 +2710,121 @@ function AttractionsSection() {
         onClose={closeForm}
         busy={busy}
         error={formError}
-      />
+      >
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-gray-500">
+              <ImagePlus className="h-3.5 w-3.5" /> Fotos y videos
+              {mediaCount > 0 ? <span className="text-gray-400">· {mediaCount}</span> : null}
+            </span>
+            <label
+              className={`flex cursor-pointer items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium ${
+                uploading
+                  ? 'cursor-wait bg-gray-100 text-gray-400'
+                  : 'bg-gray-900 text-white hover:bg-gray-800'
+              }`}
+            >
+              {uploading ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Upload className="h-3 w-3" />
+              )}
+              {uploading ? 'Subiendo...' : 'Subir'}
+              <input
+                type="file"
+                multiple
+                accept="image/*,video/*"
+                className="hidden"
+                disabled={uploading}
+                onChange={(event) => {
+                  void uploadMediaFiles(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+            </label>
+          </div>
+
+          {mediaCount === 0 ? (
+            <p className="rounded-lg border border-dashed border-gray-200 py-3 text-center text-[11px] text-gray-400">
+              Subí las fotos y videos ahora: se guardan junto con el atractivo.
+            </p>
+          ) : (
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+              {existingMedia.map((image) => (
+                <div key={image.id} className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
+                  {inferMediaType(image.image_url) === 'video' ? (
+                    <div className="flex h-full w-full items-center justify-center text-gray-400">
+                      <Film className="h-5 w-5" />
+                    </div>
+                  ) : (
+                    <img src={image.image_url} alt="" className="h-full w-full object-cover" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void removeExistingMedia(image)}
+                    disabled={removingMediaId === image.id}
+                    title="Quitar archivo"
+                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-gray-600 transition-colors hover:text-red-600 disabled:opacity-50"
+                  >
+                    {removingMediaId === image.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+              ))}
+              {pendingMedia.map((item, index) => (
+                <div key={`${item.url}-${index}`} className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
+                  {item.type === 'video' ? (
+                    <div className="flex h-full w-full items-center justify-center text-gray-400">
+                      <Film className="h-5 w-5" />
+                    </div>
+                  ) : (
+                    <img src={item.url} alt="" className="h-full w-full object-cover" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPendingMedia((prev) => prev.filter((_, i) => i !== index))}
+                    title="Quitar archivo"
+                    className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-gray-600 transition-colors hover:text-red-600"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gray-900/70 px-1 py-0.5 text-[9px] text-white">
+                    Sin guardar
+                  </span>
+                </div>
+              ))}
+              {folderMedia.map((file, index) => (
+                <div
+                  key={`${file.url}-${index}`}
+                  className="relative aspect-square overflow-hidden rounded-lg bg-gray-100"
+                  title={file.name}
+                >
+                  {file.type === 'video' ? (
+                    <div className="flex h-full w-full items-center justify-center text-gray-400">
+                      <Film className="h-5 w-5" />
+                    </div>
+                  ) : (
+                    <img src={file.url} alt="" className="h-full w-full object-cover" />
+                  )}
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gray-900/70 px-1 py-0.5 text-[9px] text-white">
+                    Carpeta
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {folderMedia.length > 0 ? (
+            <p className="text-[11px] leading-relaxed text-gray-400">
+              Los archivos con etiqueta «Carpeta» están en public/atractivos y se administran
+              desde el panel flotante del sitio; acá se muestran como referencia de solo lectura.
+            </p>
+          ) : null}
+        </div>
+      </RecordDialog>
     </>
   );
 }
@@ -2636,7 +3419,7 @@ function PromotionsSection() {
           <p className="mt-1 text-sm text-gray-500">Creá la primera para que aparezca en /promociones.</p>
           <button
             type="button"
-            onClick={openNew}
+            onClick={() => openNew()}
             className="mt-5 rounded-lg bg-gray-900 px-6 py-3 text-sm font-medium text-white hover:bg-gray-800"
           >
             Crear promoción
@@ -3456,7 +4239,7 @@ export default function AdminDashboard() {
         {/* Top bar */}
         <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6">
           <h1 className="text-lg font-serif text-gray-900">
-            {menuItems.find(i => i.id === activeSection)?.label || 'Dashboard'}
+            {menuItems.find(i => i.id === activeSection)?.label || 'Panel de Control'}
           </h1>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
@@ -3509,7 +4292,7 @@ export default function AdminDashboard() {
 
             {activeSection === 'hero' && <HeroSection />}
             {activeSection === 'rooms' && <RoomsSection />}
-            {activeSection === 'amenities' && <AmenitiesSection />}
+            {activeSection === 'services' && <ServicesSection />}
             {activeSection === 'gallery' && <GallerySection />}
             {activeSection === 'attractions' && <AttractionsSection />}
             {activeSection === 'comments' && <CommentsSection />}

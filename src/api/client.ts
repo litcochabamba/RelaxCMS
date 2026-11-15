@@ -652,7 +652,7 @@ export interface CloudinaryUpload {
 }
 
 /**
- * Sube una imagen de la galería a Cloudinary.
+ * Sube una imagen o un video a Cloudinary.
  *
  * El backend firma la subida; el API secret no llega al navegador. El archivo
  * viaja directo a Cloudinary, así no pasa por el Functions de Pages.
@@ -661,11 +661,17 @@ export async function uploadCloudinaryImage(
   file: File,
   folder = 'relaxweb/galeria'
 ): Promise<{ upload: CloudinaryUpload | null; error: string | null }> {
-  if (!file.type.startsWith('image/')) {
-    return { upload: null, error: 'El archivo tiene que ser una imagen' };
+  const isVideo = file.type.startsWith('video/');
+  if (!isVideo && !file.type.startsWith('image/')) {
+    return { upload: null, error: 'El archivo tiene que ser una imagen o un video' };
   }
-  if (file.size > 10 * 1024 * 1024) {
-    return { upload: null, error: 'La imagen supera los 10 MB' };
+  // 5 MB de video: un clip mayor tarda demasiado en cargar en el hero y en la
+  // galería, sobre todo con datos móviles.
+  if (file.size > (isVideo ? 5 : 10) * 1024 * 1024) {
+    return {
+      upload: null,
+      error: isVideo ? 'El video supera los 5 MB' : 'La imagen supera los 10 MB',
+    };
   }
 
   try {
@@ -700,7 +706,7 @@ export async function uploadCloudinaryImage(
     form.append('folder', signed.folder);
 
     const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloud_name)}/image/upload`,
+      `https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloud_name)}/${isVideo ? 'video' : 'image'}/upload`,
       { method: 'POST', body: form }
     );
     const body = (await response.json().catch(() => null)) as

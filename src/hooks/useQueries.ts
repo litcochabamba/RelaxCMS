@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { db } from '../api/client';
 import { sessionFetch } from '../api/session';
 import type {
-  Hotel, HeroSlide, Amenity,
+  Hotel, HeroSlide, Service,
   Attraction, GalleryItem, Comment, Inquiry, Reservation,
   Promotion, HotelConfig,
   RoomTypeInventory, RoomUnit, User
@@ -219,7 +219,16 @@ export function useRoomAvailabilityRanges(
         credentials: 'include',
       });
       const body = (await response.json().catch(() => null)) as
-        | { data?: { rooms?: string[] | null; ranges?: OccupiedRange[] | null } | null; error?: string | null }
+        | {
+            data?: {
+              rooms?: string[] | null;
+              ranges?: OccupiedRange[] | null;
+              free_soon?: string[] | null;
+              free_from?: Array<{ room_type: string; free_from: string }> | null;
+              states?: Array<{ room_type: string; status: number | null; status_label: string | null }> | null;
+            } | null;
+            error?: string | null;
+          }
         | null;
       if (!response.ok) {
         throw new Error(body?.error || 'No se pudo consultar la disponibilidad');
@@ -227,6 +236,12 @@ export function useRoomAvailabilityRanges(
       return {
         rooms: body?.data?.rooms ?? [],
         ranges: body?.data?.ranges ?? [],
+        /** Unidades con salida conocida: «próxima a liberarse», sin fechas. */
+        freeSoon: body?.data?.free_soon ?? [],
+        /** Estado operativo del PMS por unidad; solo llega al personal. */
+        states: body?.data?.states ?? [],
+        /** Día en que cada unidad tomada vuelve a estar libre. */
+        freeFrom: body?.data?.free_from ?? [],
       };
     },
     enabled: !!hotelId && !!checkIn && !!checkOut && checkOut > checkIn,
@@ -260,18 +275,18 @@ export function useUpdateRoomUnit() {
   });
 }
 
-// Amenities
-export function useAmenities(hotelId: string, includeInactive = false) {
+// Servicios del hotel
+export function useServices(hotelId: string, includeInactive = false) {
   return useQuery({
-    queryKey: ['amenities', hotelId, includeInactive],
+    queryKey: ['services', hotelId, includeInactive],
     queryFn: async () => {
       const params = {
         filters: includeInactive ? { hotel_id: hotelId } : { hotel_id: hotelId, active: true },
         order: { column: 'order', ascending: true },
       };
       const { data, error } = includeInactive
-        ? await db.selectAdmin<Amenity>('amenidades', params)
-        : await db.select<Amenity>('amenidades', params);
+        ? await db.selectAdmin<Service>('servicios_hotel', params)
+        : await db.select<Service>('servicios_hotel', params);
       if (error) throw new Error(error);
       return data || [];
     },
@@ -279,42 +294,42 @@ export function useAmenities(hotelId: string, includeInactive = false) {
   });
 }
 
-export function useCreateAmenity() {
+export function useCreateService() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: Partial<Amenity> & { hotel_id: string; name: string; category: string }) => {
-      const { data: created, error } = await db.insert<Amenity>('amenidades', data as Record<string, unknown>);
+    mutationFn: async (data: Partial<Service> & { hotel_id: string; name: string; category: string }) => {
+      const { data: created, error } = await db.insert<Service>('servicios_hotel', data as Record<string, unknown>);
       if (error) throw new Error(error);
       return created;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['amenities'] });
+      queryClient.invalidateQueries({ queryKey: ['services'] });
     },
   });
 }
 
-export function useUpdateAmenity() {
+export function useUpdateService() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<Amenity> }) => {
-      const { error } = await db.update('amenidades', data as Record<string, unknown>, { id });
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Service> }) => {
+      const { error } = await db.update('servicios_hotel', data as Record<string, unknown>, { id });
       if (error) throw new Error(error);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['amenities'] });
+      queryClient.invalidateQueries({ queryKey: ['services'] });
     },
   });
 }
 
-export function useDeleteAmenity() {
+export function useDeleteService() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await db.delete('amenidades', { id });
+      const { error } = await db.delete('servicios_hotel', { id });
       if (error) throw new Error(error);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['amenities'] });
+      queryClient.invalidateQueries({ queryKey: ['services'] });
     },
   });
 }

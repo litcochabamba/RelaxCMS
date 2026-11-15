@@ -43,7 +43,7 @@ export default function Navbar() {
   // Un solo lugar decide a dónde lleva la cuenta: al panel para el personal del
   // hotel y a la cuenta propia para los clientes.
   const accountLink = isStaff
-    ? { to: '/admin', label: 'Dashboard' }
+    ? { to: '/admin', label: 'Panel de Control' }
     : user?.role === 'client'
       ? { to: '/cuenta', label: 'Mi cuenta' }
       : null;

@@ -7,8 +7,12 @@ dist
 .dev-server.pid
 .cookies.txt
 .freebuff
-/supabase
-designs/
+keepalive/
+supabase/
 Credenciales.md
 test-results
 playwright-report
+
+# SQL de base de datos: esquema y datos no se versionan ni suben a GitHub
+*.sql
+.wrangler/

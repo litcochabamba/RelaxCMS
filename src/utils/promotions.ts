@@ -68,7 +68,7 @@ export function promotionDiscountLabel(promotion: Promotion): string {
  */
 export const PROMO_RIBBON_PLACEMENTS = [
   'showcase',
-  'amenities',
+  'services',
   'rooms',
   'booking',
   'attractions',

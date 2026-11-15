@@ -11,6 +11,8 @@ interface ImageUploadButtonProps {
   className?: string;
   /** Vacío para que el formulario que lo usa muestre su propio mensaje. */
   successMessage?: string;
+  /** Tipo de archivo del selector: imágenes (por defecto) o videos. */
+  accept?: string;
 }
 
 /**
@@ -24,6 +26,7 @@ export default function ImageUploadButton({
   disabled = false,
   className = '',
   successMessage = 'Imagen subida',
+  accept = 'image/*',
 }: ImageUploadButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -57,7 +60,7 @@ export default function ImageUploadButton({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={accept}
         className="hidden"
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />

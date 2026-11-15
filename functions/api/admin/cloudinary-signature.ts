@@ -13,8 +13,12 @@ import { json, readSession, type Env } from '../../_lib/env';
 const ALLOWED_FOLDERS = new Set([
   'relaxweb/galeria',
   'relaxweb/tipos',
-  'relaxweb/amenidades',
+  'relaxweb/servicios',
   'relaxweb/promociones',
+  'relaxweb/atractivos',
+  'relaxweb/hero',
+  'relaxweb/branding',
+  'relaxweb/bloques',
   // Imágenes de la sección Información: Cloudinary crea la carpeta al subir
   // el primer archivo.
   'relaxweb/images_info',

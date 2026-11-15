@@ -3,7 +3,7 @@ import type { HomeBlock, HomeBlockPlacement } from '../../types';
 
 export const PLACEMENT_LABELS: Record<HomeBlockPlacement, string> = {
   showcase: 'Información',
-  amenities: 'Amenidades',
+  services: 'Servicios del hotel',
   rooms: 'Habitaciones',
   booking: 'Reservas',
   attractions: 'Atractivos',

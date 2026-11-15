@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { deleteMedia, storagePathFromUrl, uploadMedia } from '../../api/client';
+import { deleteMedia, storagePathFromUrl, uploadCloudinaryImage } from '../../api/client';
 import { useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCmsPanelStore } from '../../store/cmsStore';
 import {
-  useHotels, useAmenities,
+  useHotels, useServices,
   useUpdateHotel,
   useHeroSlides, useUpdateHeroSlides, useCreateHeroSlide, useDeleteHeroSlide, useSeedHeroSlides,
   useHotelConfig, useUpsertHotelConfig,
@@ -14,7 +14,7 @@ import {
 import HeroMediaPicker, { SlideMediaPreview, type HeroMediaField } from './HeroMediaPicker';
 import ImageFolderPicker from './ImageFolderPicker';
 import ImageUploadButton from './ImageUploadButton';
-import AmenitiesEditor, { type AmenitiesEditorHandle } from './AmenitiesEditor';
+import ServicesEditor, { type ServicesEditorHandle } from './ServicesEditor';
 import HomeBlocksEditor from './HomeBlocksEditor';
 import AttractionsEditor, { type AttractionsEditorHandle } from './AttractionsEditor';
 import RoomInventoryEditor from './RoomInventoryEditor';
@@ -72,7 +72,7 @@ interface SectionDefinition {
 const sections: SectionDefinition[] = [
   { id: 'hero', label: 'Hero', Icon: Palette, page: 'home' },
   { id: 'info', label: 'Información', Icon: Info, page: 'home' },
-  { id: 'amenities', label: 'Amenidades', Icon: Star, page: 'home' },
+  { id: 'services', label: 'Servicios del hotel', Icon: Star, page: 'home' },
   { id: 'rooms', label: 'Habitaciones', Icon: BedDouble, page: 'home' },
   { id: 'booking', label: 'Reservas', Icon: Calendar, page: 'home' },
   { id: 'attractions', label: 'Atractivos', Icon: Map, page: 'home' },
@@ -122,6 +122,46 @@ function serializeInfoSets(sets: ShowcaseImageSet[]): string {
   );
 }
 
+/**
+ * Campo de URL con subida directa a Cloudinary. El hero deja de depender de
+ * archivos en public/hero o de Supabase Storage: la imagen o el video se sube
+ * desde el panel y la base guarda solo la URL.
+ */
+function SlideMediaField({
+  label,
+  value,
+  accept,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  accept: 'image/*' | 'video/*';
+  onChange: (url: string) => void;
+}) {
+  const isVideo = accept === 'video/*';
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input
+        type="url"
+        value={value || ''}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
+        placeholder="https://..."
+      />
+      <div className="mt-1">
+        <ImageUploadButton
+          folder="relaxweb/hero"
+          accept={accept}
+          label={isVideo ? 'Subir video' : 'Subir imagen'}
+          successMessage={isVideo ? 'Video subido a Cloudinary' : 'Imagen subida a Cloudinary'}
+          onUploaded={onChange}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function CmsPanel() {
   const { isOpen, activeSection, toggle, setActiveSection } = useCmsPanelStore();
   const { pathname } = useLocation();
@@ -142,12 +182,12 @@ export default function CmsPanel() {
   const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
   const hotelId = hotel?.id || '';
 
-  const { data: amenities = [], isLoading: amenitiesLoading } = useAmenities(hotelId, true);
+  const { data: services = [], isLoading: servicesLoading } = useServices(hotelId, true);
   const { data: heroSlides = [], isLoading: heroLoading } = useHeroSlides(hotelId);
   const { data: hotelConfigs = [] } = useHotelConfig(hotelId);
-  const amenitiesGroupsConfig =
-    (hotelConfigs as ConfigEntry[]).find((config) => config.key === 'amenities_groups')?.value || '';
-  const amenitiesEditorRef = useRef<AmenitiesEditorHandle>(null);
+  const servicesGroupsConfig =
+    (hotelConfigs as ConfigEntry[]).find((config) => config.key === 'services_groups')?.value || '';
+  const servicesEditorRef = useRef<ServicesEditorHandle>(null);
   const { data: attractionsAll = [], isLoading: attractionsLoading } = useAttractionsWithImages(hotelId, true);
   const attractionsEditorRef = useRef<AttractionsEditorHandle>(null);
   const attractionsFolderOverrides =
@@ -228,8 +268,8 @@ export default function CmsPanel() {
         booking_title: configMap.booking_title || 'Reserva una\nHabitación',
         booking_description: configMap.booking_description || 'Consulta la disponibilidad de nuestras habitaciones. Nuestro equipo estará encantado de atenderte a través de WhatsApp para confirmar tu reserva.',
         booking_types_duration: configMap.booking_types_duration || '6',
-        amenities_title: configMap.amenities_title || 'Amenidades',
-        amenities_description: configMap.amenities_description || 'Todo lo que necesitas para una estancia perfecta. Disfruta de nuestras instalaciones y servicios diseñados para tu comodidad.',
+        services_title: configMap.services_title || 'Servicios del hotel',
+        services_description: configMap.services_description || 'Todo lo que necesitas para una estancia perfecta. Disfruta de nuestras instalaciones y servicios diseñados para tu comodidad.',
         rooms_title: configMap.rooms_title || 'Habitaciones & Departamentos',
         rooms_description: configMap.rooms_description || 'Descubre nuestras habitaciones diseñadas para ofrecerte la máxima comodidad y una experiencia inolvidable.',
         rooms_count: configMap.rooms_count || '5',
@@ -323,20 +363,16 @@ export default function CmsPanel() {
 
   const handleLogoUpload = async (file: File | undefined) => {
     if (!file || !hotelId) return;
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('La imagen supera los 50 MB');
-      return;
-    }
     setLogoUploading(true);
-    const { media, error } = await uploadMedia(file, 'branding/logos');
-    if (error || !media) {
+    const { upload, error } = await uploadCloudinaryImage(file, 'relaxweb/branding');
+    if (error || !upload) {
       toast.error(error || 'No se pudo subir el logo');
       setLogoUploading(false);
       return;
     }
     try {
-      await updateHotel.mutateAsync({ id: hotelId, data: { logo_url: media.url } });
-      setEditingHotel((prev) => ({ ...prev, logo_url: media.url }));
+      await updateHotel.mutateAsync({ id: hotelId, data: { logo_url: upload.url } });
+      setEditingHotel((prev) => ({ ...prev, logo_url: upload.url }));
       toast.success('Logo actualizado');
     } catch {
       toast.error('No se pudo guardar el logo');
@@ -363,7 +399,7 @@ export default function CmsPanel() {
   const handleSave = async (section: string) => {
     if (section === 'colors') return handleSaveColors();
     if (section === 'settings') return handleSaveSettings();
-    if (['info', 'booking', 'amenities', 'rooms', 'contact', 'attractions', 'comments', 'gallery_header', 'promotions_header'].includes(section)) {
+    if (['info', 'booking', 'services', 'rooms', 'contact', 'attractions', 'comments', 'gallery_header', 'promotions_header'].includes(section)) {
       return handleSaveSection(section);
     }
   };
@@ -425,9 +461,9 @@ export default function CmsPanel() {
           group: 'sections',
         });
       }
-      // Amenidades: grupos, orden, visibilidad e ítems viven en su propio editor.
-      if (section === 'amenities') {
-        await amenitiesEditorRef.current?.save();
+      // Servicios del hotel: grupos, orden, visibilidad e ítems viven en su propio editor.
+      if (section === 'services') {
+        await servicesEditorRef.current?.save();
       }
       // Atractivos: filas y carpeta de medios por atractivo.
       if (section === 'attractions') {
@@ -453,7 +489,7 @@ export default function CmsPanel() {
       : null;
 
   const handleSaveBooking = async () => handleSaveSection('booking');
-  const handleSaveAmenities = async () => handleSaveSection('amenities');
+  const handleSaveServices = async () => handleSaveSection('services');
 
   // Hero: desplazamiento horizontal del bloque de contenido (global, todos los slides).
   const handleSaveHeroOffset = async () => {
@@ -954,46 +990,30 @@ export default function CmsPanel() {
                                       />
                                     </div>
 
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Imagen URL (horizontal / escritorio)</label>
-                                      <input
-                                        type="url"
-                                        value={newSlide.image_url}
-                                        onChange={(e) => setNewSlide({ ...newSlide, image_url: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        placeholder="https://..."
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Imagen móvil URL (vertical)</label>
-                                      <input
-                                        type="url"
-                                        value={newSlide.image_mobile_url}
-                                        onChange={(e) => setNewSlide({ ...newSlide, image_mobile_url: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        placeholder="https://..."
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Video URL (horizontal / escritorio)</label>
-                                      <input
-                                        type="url"
-                                        value={newSlide.video_url}
-                                        onChange={(e) => setNewSlide({ ...newSlide, video_url: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        placeholder="https://..."
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-sm font-medium text-gray-700 mb-1">Video móvil URL (vertical)</label>
-                                      <input
-                                        type="url"
-                                        value={newSlide.video_mobile_url}
-                                        onChange={(e) => setNewSlide({ ...newSlide, video_mobile_url: e.target.value })}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        placeholder="https://..."
-                                      />
-                                    </div>
+                                    <SlideMediaField
+                                      label="Imagen URL (horizontal / escritorio)"
+                                      value={newSlide.image_url}
+                                      accept="image/*"
+                                      onChange={(url) => setNewSlide({ ...newSlide, image_url: url })}
+                                    />
+                                    <SlideMediaField
+                                      label="Imagen móvil URL (vertical)"
+                                      value={newSlide.image_mobile_url}
+                                      accept="image/*"
+                                      onChange={(url) => setNewSlide({ ...newSlide, image_mobile_url: url })}
+                                    />
+                                    <SlideMediaField
+                                      label="Video URL (horizontal / escritorio)"
+                                      value={newSlide.video_url}
+                                      accept="video/*"
+                                      onChange={(url) => setNewSlide({ ...newSlide, video_url: url })}
+                                    />
+                                    <SlideMediaField
+                                      label="Video móvil URL (vertical)"
+                                      value={newSlide.video_mobile_url}
+                                      accept="video/*"
+                                      onChange={(url) => setNewSlide({ ...newSlide, video_mobile_url: url })}
+                                    />
                                     <div>
                                       <label className="block text-sm font-medium text-gray-700 mb-1">Titulo *</label>
                                       <input
@@ -1090,42 +1110,30 @@ export default function CmsPanel() {
                                         />
                                       </div>
 
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Imagen URL (horizontal / escritorio)</label>
-                                        <input
-                                          type="url"
-                                          value={editingSlide.image_url}
-                                          onChange={(e) => setEditingSlide({ ...editingSlide, image_url: e.target.value })}
-                                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Imagen móvil URL (vertical)</label>
-                                        <input
-                                          type="url"
-                                          value={editingSlide.image_mobile_url || ''}
-                                          onChange={(e) => setEditingSlide({ ...editingSlide, image_mobile_url: e.target.value })}
-                                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Video URL (horizontal / escritorio)</label>
-                                        <input
-                                          type="url"
-                                          value={editingSlide.video_url || ''}
-                                          onChange={(e) => setEditingSlide({ ...editingSlide, video_url: e.target.value })}
-                                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Video móvil URL (vertical)</label>
-                                        <input
-                                          type="url"
-                                          value={editingSlide.video_mobile_url || ''}
-                                          onChange={(e) => setEditingSlide({ ...editingSlide, video_mobile_url: e.target.value })}
-                                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                                        />
-                                      </div>
+                                      <SlideMediaField
+                                        label="Imagen URL (horizontal / escritorio)"
+                                        value={editingSlide.image_url}
+                                        accept="image/*"
+                                        onChange={(url) => setEditingSlide({ ...editingSlide, image_url: url })}
+                                      />
+                                      <SlideMediaField
+                                        label="Imagen móvil URL (vertical)"
+                                        value={editingSlide.image_mobile_url || ''}
+                                        accept="image/*"
+                                        onChange={(url) => setEditingSlide({ ...editingSlide, image_mobile_url: url })}
+                                      />
+                                      <SlideMediaField
+                                        label="Video URL (horizontal / escritorio)"
+                                        value={editingSlide.video_url || ''}
+                                        accept="video/*"
+                                        onChange={(url) => setEditingSlide({ ...editingSlide, video_url: url })}
+                                      />
+                                      <SlideMediaField
+                                        label="Video móvil URL (vertical)"
+                                        value={editingSlide.video_mobile_url || ''}
+                                        accept="video/*"
+                                        onChange={(url) => setEditingSlide({ ...editingSlide, video_mobile_url: url })}
+                                      />
                                       <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Titulo</label>
                                         <input
@@ -1508,37 +1516,37 @@ export default function CmsPanel() {
                       </div>
                     )}
 
-                    {/* Amenities section editor */}
-                    {activeSection === 'amenities' && (
+                    {/* Servicios del hotel */}
+                    {activeSection === 'services' && (
                       <div className="space-y-5">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Titulo principal</label>
                           <input
                             type="text"
-                            value={editingSection.amenities_title || ''}
-                            onChange={(e) => setEditingSection({ ...editingSection, amenities_title: e.target.value })}
+                            value={editingSection.services_title || ''}
+                            onChange={(e) => setEditingSection({ ...editingSection, services_title: e.target.value })}
                             className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900/10"
-                            placeholder="Amenidades"
+                            placeholder="Servicios del hotel"
                           />
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Descripcion</label>
                           <textarea
                             rows={3}
-                            value={editingSection.amenities_description || ''}
-                            onChange={(e) => setEditingSection({ ...editingSection, amenities_description: e.target.value })}
+                            value={editingSection.services_description || ''}
+                            onChange={(e) => setEditingSection({ ...editingSection, services_description: e.target.value })}
                             className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
                             placeholder="Descripcion de la seccion"
                           />
                         </div>
                         {/* Grupos, visibilidad e ítems */}
                         <div className="border-t border-gray-100 pt-5">
-                          <AmenitiesEditor
-                            ref={amenitiesEditorRef}
+                          <ServicesEditor
+                            ref={servicesEditorRef}
                             hotelId={hotelId}
-                            amenities={amenities}
-                            groupsConfig={amenitiesGroupsConfig}
-                            isLoading={amenitiesLoading}
+                            services={services}
+                            groupsConfig={servicesGroupsConfig}
+                            isLoading={servicesLoading}
                           />
                         </div>
                       </div>
@@ -1805,7 +1813,7 @@ export default function CmsPanel() {
                       />
                     )}
 
-                    {['colors', 'settings', 'info', 'booking', 'amenities', 'rooms', 'contact', 'attractions', 'comments', 'gallery_header', 'promotions_header'].includes(activeSection || '') && (
+                    {['colors', 'settings', 'info', 'booking', 'services', 'rooms', 'contact', 'attractions', 'comments', 'gallery_header', 'promotions_header'].includes(activeSection || '') && (
                       <button
                         onClick={() => handleSave(activeSection || '')}
                         disabled={updateHotel.isPending}

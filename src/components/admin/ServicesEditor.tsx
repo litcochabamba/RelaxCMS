@@ -20,24 +20,24 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
-import { AMENITY_ICON_OPTIONS, getAmenityIcon } from '../../utils/amenityIcons';
+import { SERVICE_ICON_OPTIONS, getServiceIcon } from '../../utils/serviceIcons';
 import ImageUploadButton from './ImageUploadButton';
 import {
-  parseAmenityGroups,
-  serializeAmenityGroups,
-  type AmenityGroupConfig,
-} from '../home/AmenitiesSection';
+  parseServiceGroups,
+  serializeServiceGroups,
+  type ServiceGroupConfig,
+} from '../home/ServicesSection';
 import {
-  useCreateAmenity,
-  useDeleteAmenity,
-  useUpdateAmenity,
+  useCreateService,
+  useDeleteService,
+  useUpdateService,
   useUpsertHotelConfig,
 } from '../../hooks/useQueries';
-import type { Amenity } from '../../types';
+import type { Service } from '../../types';
 import ConfirmDialog from '../common/ConfirmDialog';
 import toast from 'react-hot-toast';
 
-interface AmenityDraft {
+interface ServiceDraft {
   key: string;
   id?: string;
   name: string;
@@ -51,18 +51,18 @@ interface GroupDraft {
   key: string;
   category: string;
   visible: boolean;
-  items: AmenityDraft[];
+  items: ServiceDraft[];
 }
 
-export interface AmenitiesEditorHandle {
+export interface ServicesEditorHandle {
   save: () => Promise<void>;
 }
 
-interface AmenitiesEditorProps {
+interface ServicesEditorProps {
   hotelId: string;
-  /** Todas las amenidades del hotel, incluidas las inactivas. */
-  amenities: Amenity[];
-  /** Valor crudo de `configuracion_hotel.amenities_groups`. */
+  /** Todos los servicios del hotel, incluidos los inactivos. */
+  services: Service[];
+  /** Valor crudo de `configuracion_hotel.services_groups`. */
   groupsConfig?: string;
   isLoading?: boolean;
 }
@@ -73,11 +73,11 @@ function newKey(prefix: string) {
   return `${prefix}-${Date.now()}-${newItemCounter}`;
 }
 
-function buildDrafts(amenities: Amenity[], groupsConfig?: string): GroupDraft[] {
-  const configured = parseAmenityGroups(groupsConfig) || [];
+function buildDrafts(services: Service[], groupsConfig?: string): GroupDraft[] {
+  const configured = parseServiceGroups(groupsConfig) || [];
   const categories: string[] = [];
-  amenities.forEach((amenity) => {
-    if (amenity.category && !categories.includes(amenity.category)) categories.push(amenity.category);
+  services.forEach((service) => {
+    if (service.category && !categories.includes(service.category)) categories.push(service.category);
   });
 
   const ordered = [
@@ -91,58 +91,58 @@ function buildDrafts(amenities: Amenity[], groupsConfig?: string): GroupDraft[] 
       key: category,
       category,
       visible: config ? config.visible : true,
-      items: amenities
-        .filter((amenity) => amenity.category === category)
-        .map((amenity) => ({
-          key: amenity.id,
-          id: amenity.id,
-          name: amenity.name,
-          description: amenity.description || '',
-          image_url: amenity.image_url || '',
-          icon: amenity.icon || 'CircleDot',
-          active: amenity.active,
+      items: services
+        .filter((service) => service.category === category)
+        .map((service) => ({
+          key: service.id,
+          id: service.id,
+          name: service.name,
+          description: service.description || '',
+          image_url: service.image_url || '',
+          icon: service.icon || 'CircleDot',
+          active: service.active,
         })),
     };
   });
 }
 
-const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
-  ({ hotelId, amenities, groupsConfig, isLoading }, ref) => {
-    const [groups, setGroups] = useState<GroupDraft[]>(() => buildDrafts(amenities, groupsConfig));
+const ServicesEditor = forwardRef<ServicesEditorHandle, ServicesEditorProps>(
+  ({ hotelId, services, groupsConfig, isLoading }, ref) => {
+    const [groups, setGroups] = useState<GroupDraft[]>(() => buildDrafts(services, groupsConfig));
     const [expanded, setExpanded] = useState<Record<string, boolean>>({});
     const [editingItem, setEditingItem] = useState<string | null>(null);
     const [newGroup, setNewGroup] = useState('');
     const [groupToDelete, setGroupToDelete] = useState<GroupDraft | null>(null);
 
-    const createAmenity = useCreateAmenity();
-    const updateAmenity = useUpdateAmenity();
-    const deleteAmenity = useDeleteAmenity();
+    const createService = useCreateService();
+    const updateService = useUpdateService();
+    const deleteService = useDeleteService();
     const upsertConfig = useUpsertHotelConfig();
 
     const saving =
-      createAmenity.isPending || updateAmenity.isPending || deleteAmenity.isPending || upsertConfig.isPending;
+      createService.isPending || updateService.isPending || deleteService.isPending || upsertConfig.isPending;
 
     // La configuración y las filas llegan de la base: se rearma el borrador
     // solo cuando los datos cambian de verdad, para no perder ediciones en
     // curso cuando React Query vuelve a consultar (p. ej. al enfocar la ventana).
     const dataSignature = useMemo(
       () =>
-        `${amenities
+        `${services
           .map(
-            (amenity) =>
-              `${amenity.id}:${amenity.category}:${amenity.name}:${amenity.icon}:${amenity.active}:${amenity.order}:${amenity.description ?? ''}:${amenity.image_url ?? ''}`
+            (service) =>
+              `${service.id}:${service.category}:${service.name}:${service.icon}:${service.active}:${service.order}:${service.description ?? ''}:${service.image_url ?? ''}`
           )
           .join('|')}::${groupsConfig ?? ''}`,
-      [amenities, groupsConfig]
+      [services, groupsConfig]
     );
     const lastSignature = useRef<string | null>(null);
 
     useEffect(() => {
       if (lastSignature.current === dataSignature) return;
       lastSignature.current = dataSignature;
-      setGroups(buildDrafts(amenities, groupsConfig));
+      setGroups(buildDrafts(services, groupsConfig));
       setEditingItem(null);
-    }, [amenities, groupsConfig, dataSignature]);
+    }, [services, groupsConfig, dataSignature]);
 
     const totalItems = useMemo(() => groups.reduce((sum, group) => sum + group.items.length, 0), [groups]);
 
@@ -188,7 +188,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
       setNewGroup('');
     };
 
-    const patchItem = (groupKey: string, itemKey: string, patch: Partial<AmenityDraft>) => {
+    const patchItem = (groupKey: string, itemKey: string, patch: Partial<ServiceDraft>) => {
       setGroups((prev) =>
         prev.map((group) =>
           group.key === groupKey
@@ -263,7 +263,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
           }
         }
 
-        const previous = new Map(amenities.map((amenity) => [amenity.id, amenity]));
+        const previous = new Map(services.map((service) => [service.id, service]));
         const kept: string[] = [];
 
         // El orden es global (no por grupo) para que la consulta que ordena
@@ -296,25 +296,25 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                 (before.icon || '') !== payload.icon ||
                 before.active !== payload.active ||
                 before.order !== payload.order;
-              if (changed) await updateAmenity.mutateAsync({ id: item.id, data: payload });
+              if (changed) await updateService.mutateAsync({ id: item.id, data: payload });
             } else {
-              await createAmenity.mutateAsync(payload);
+              await createService.mutateAsync(payload);
             }
           }
         }
 
-        for (const amenity of amenities) {
-          if (!kept.includes(amenity.id)) await deleteAmenity.mutateAsync(amenity.id);
+        for (const service of services) {
+          if (!kept.includes(service.id)) await deleteService.mutateAsync(service.id);
         }
 
-        const groupConfig: AmenityGroupConfig[] = cleaned.map((group) => ({
+        const groupConfig: ServiceGroupConfig[] = cleaned.map((group) => ({
           category: group.category,
           visible: group.visible,
         }));
         await upsertConfig.mutateAsync({
           hotelId,
-          key: 'amenities_groups',
-          value: serializeAmenityGroups(groupConfig),
+          key: 'services_groups',
+          value: serializeServiceGroups(groupConfig),
           group: 'sections',
         });
       },
@@ -451,7 +451,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                   ) : null}
 
                   {group.items.map((item, itemIndex) => {
-                    const Icon = getAmenityIcon(item.icon);
+                    const Icon = getServiceIcon(item.icon);
                     const isEditing = editingItem === item.key;
 
                     if (isEditing) {
@@ -481,7 +481,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
 
                           <div>
                             <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                              Foto de la amenidad (opcional)
+                              Foto de el servicio (opcional)
                             </p>
                             <div className="flex items-start gap-2">
                               <div className="flex h-20 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
@@ -498,7 +498,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <ImageUploadButton
                                   label={item.image_url ? 'Cambiar foto' : 'Subir foto'}
-                                  folder="relaxweb/amenidades"
+                                  folder="relaxweb/servicios"
                                   successMessage=""
                                   onUploaded={(url) => patchItem(group.key, item.key, { image_url: url })}
                                   className="!px-2.5 !py-1.5 !text-[11px]"
@@ -516,7 +516,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                               </div>
                             </div>
                             <p className="mt-1 text-[10px] text-gray-400">
-                              Se guarda con «Guardar cambios». La foto se sube a relaxweb/amenidades.
+                              Se guarda con «Guardar cambios». La foto se sube a relaxweb/servicios.
                             </p>
                           </div>
 
@@ -525,8 +525,8 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
                               Icono
                             </p>
                             <div className="grid max-h-32 grid-cols-8 gap-1 overflow-y-auto rounded-lg border border-gray-200 bg-white p-1.5">
-                              {AMENITY_ICON_OPTIONS.map((iconName) => {
-                                const OptionIcon = getAmenityIcon(iconName);
+                              {SERVICE_ICON_OPTIONS.map((iconName) => {
+                                const OptionIcon = getServiceIcon(iconName);
                                 const selected = item.icon === iconName;
                                 return (
                                   <button
@@ -663,7 +663,7 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
         {saving ? (
           <p className="flex items-center justify-center gap-2 text-xs text-gray-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Guardando amenidades...
+            Guardando servicios...
           </p>
         ) : (
           <p className="text-center text-[11px] text-gray-400">
@@ -684,6 +684,6 @@ const AmenitiesEditor = forwardRef<AmenitiesEditorHandle, AmenitiesEditorProps>(
   }
 );
 
-AmenitiesEditor.displayName = 'AmenitiesEditor';
+ServicesEditor.displayName = 'ServicesEditor';
 
-export default AmenitiesEditor;
+export default ServicesEditor;
