@@ -16,10 +16,12 @@ import {
   useAmenities, useGallery,
   useAttractionsWithImages, useAllComments, useUsers, useCreateGalleryItem, useDeleteGalleryItem,
   useSetCommentStatus, useDeleteComment, useDashboardStats,
+  useCreateHeroSlide, useUpdateHeroSlides, useCreateAmenity, useUpdateAmenity, useCreateAttraction, useUpdateAttraction,
   useReservations, useRoomTypes, useRoomUnits, useRoomAvailabilityRanges, useSetReservationStatus, useUpdateRoomType,
   useAdminPromotions, adminPromotionsQueryOptions, useCreatePromotion, useUpdatePromotion, useDeletePromotion
 } from '../../hooks/useQueries';
-import type { ClientAccount, Hotel, Promotion, RoomTypeInventory, RoomUnit, User } from '../../types';
+import type { Amenity, Attraction, AttractionImage, ClientAccount, HeroSlide, Hotel, Promotion, RoomTypeInventory, RoomUnit, User } from '../../types';
+import { AMENITY_ICON_OPTIONS, DEFAULT_AMENITY_ICON } from '../../utils/amenityIcons';
 import { 
   Building2, Bed, Tag, Star, Image, MapPin, 
   Mail, Users, XCircle, Plus, Edit, Trash2, Eye, 
@@ -180,6 +182,212 @@ function DataSection({
   );
 }
 
+// Formulario reutilizable de alta y edición para las secciones simples del
+// panel (carrusel, amenidades y atractivos). Cada sección declara sus campos y
+// comparte el mismo diálogo, para que «Nuevo» y «Editar» se comporten igual.
+type RecordValues = Record<string, string | boolean>;
+
+type RecordField = {
+  key: string;
+  label: string;
+  type?: 'text' | 'textarea' | 'number' | 'select' | 'image' | 'checkbox';
+  placeholder?: string;
+  hint?: string;
+  options?: string[];
+  wide?: boolean;
+};
+
+function toNumber(value: string | boolean | undefined, fallback = 0) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toText(value: string | boolean | undefined) {
+  return String(value ?? '').trim();
+}
+
+function RecordDialog({
+  open,
+  title,
+  description,
+  fields,
+  values,
+  onChange,
+  onSubmit,
+  onClose,
+  busy,
+  error,
+  submitLabel,
+  imageFolder,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  fields: RecordField[];
+  values: RecordValues;
+  onChange: (key: string, value: string | boolean) => void;
+  onSubmit: () => void;
+  onClose: () => void;
+  busy: boolean;
+  error: string | null;
+  submitLabel: string;
+  imageFolder: string;
+}) {
+  if (!open) return null;
+
+  const controlClass =
+    'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900/10';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-900/40 p-4 sm:items-center">
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-2xl rounded-2xl bg-white shadow-xl"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
+          <div>
+            <h3 className="font-serif text-xl text-gray-900">{title}</h3>
+            <p className="mt-1 text-sm text-gray-500">{description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            aria-label="Cerrar"
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form
+          className="space-y-4 px-6 py-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {fields.map((field) => {
+              const value = values[field.key];
+              return (
+                <div key={field.key} className={field.wide ? 'sm:col-span-2' : ''}>
+                  <span className="mb-1 block text-sm font-medium text-gray-700">{field.label}</span>
+                  {field.type === 'textarea' ? (
+                    <textarea
+                      rows={3}
+                      value={String(value ?? '')}
+                      placeholder={field.placeholder}
+                      onChange={(event) => onChange(field.key, event.target.value)}
+                      className={`${controlClass} resize-none`}
+                    />
+                  ) : field.type === 'select' ? (
+                    <select
+                      value={String(value ?? '')}
+                      onChange={(event) => onChange(field.key, event.target.value)}
+                      className={controlClass}
+                    >
+                      {(field.options || []).map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  ) : field.type === 'image' ? (
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="url"
+                          value={String(value ?? '')}
+                          placeholder={field.placeholder || 'https://…'}
+                          onChange={(event) => onChange(field.key, event.target.value)}
+                          className={`${controlClass} flex-1`}
+                        />
+                        <ImageUploadButton
+                          folder={imageFolder}
+                          label="Subir"
+                          successMessage=""
+                          disabled={busy}
+                          onUploaded={(url) => onChange(field.key, url)}
+                        />
+                      </div>
+                      {String(value ?? '') ? (
+                        <img
+                          src={String(value)}
+                          alt=""
+                          className="h-20 w-32 rounded-lg border border-gray-100 object-cover"
+                        />
+                      ) : null}
+                    </div>
+                  ) : field.type === 'checkbox' ? (
+                    <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(value)}
+                        onChange={(event) => onChange(field.key, event.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                      {field.hint || 'Visible en el sitio'}
+                    </label>
+                  ) : (
+                    <input
+                      type={field.type === 'number' ? 'number' : 'text'}
+                      value={String(value ?? '')}
+                      placeholder={field.placeholder}
+                      onChange={(event) => onChange(field.key, event.target.value)}
+                      className={controlClass}
+                    />
+                  )}
+                  {field.hint && field.type !== 'checkbox' ? (
+                    <span className="mt-1 block text-xs text-gray-400">{field.hint}</span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+
+          {error ? (
+            <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          ) : null}
+
+          <div className="flex justify-end gap-2 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={busy}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {submitLabel}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+function EditButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Editar"
+      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:text-gray-900"
+    >
+      <Edit className="h-3.5 w-3.5" />
+      Editar
+    </button>
+  );
+}
 function relativeTime(value: string | null) {
   if (!value) return '';
   const date = new Date(value);
@@ -269,31 +477,151 @@ function DashboardOverview() {
 // Hero Slides Section
 function HeroSection() {
   const { data: hotels } = useHotels();
-  const selectedHotelId = hotels?.[0]?.id;
-  const { data: slides, isLoading, error } = useHeroSlides(selectedHotelId || '');
+  const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
+  const hotelId = hotel?.id || '';
+  // Incluye los inactivos: si se oculta un slide debe seguir en la tabla para
+  // poder volver a publicarlo.
+  const { data: slides, isLoading, error } = useHeroSlides(hotelId, true);
+  const createSlide = useCreateHeroSlide();
+  const updateSlide = useUpdateHeroSlides();
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [values, setValues] = useState<RecordValues>({});
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const items = (Array.isArray(slides) ? slides : []) as HeroSlide[];
+  const busy = createSlide.isPending || updateSlide.isPending;
+
+  const openNew = () => {
+    setEditingId(null);
+    setValues({
+      title: '',
+      description: '',
+      image_url: '',
+      order: String(items.length),
+      active: true,
+    });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (slide: HeroSlide) => {
+    setEditingId(slide.id);
+    setValues({
+      title: slide.title || '',
+      description: slide.description || '',
+      image_url: slide.image_url || '',
+      order: String(slide.order ?? 0),
+      active: slide.active,
+    });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (busy) return;
+    setFormOpen(false);
+    setFormError(null);
+  };
+
+  const submit = async () => {
+    if (!hotelId) {
+      setFormError('Falta el hotel activo');
+      return;
+    }
+    const title = toText(values.title);
+    const imageUrl = toText(values.image_url);
+    if (!title) {
+      setFormError('El título es obligatorio');
+      return;
+    }
+    if (!imageUrl) {
+      setFormError('La imagen es obligatoria');
+      return;
+    }
+    const payload = {
+      title,
+      description: toText(values.description) || null,
+      image_url: imageUrl,
+      order: toNumber(values.order, items.length),
+      active: Boolean(values.active),
+    };
+    try {
+      if (editingId) {
+        await updateSlide.mutateAsync({ id: editingId, data: payload });
+        toast.success('Slide actualizado');
+      } else {
+        await createSlide.mutateAsync({
+          hotel_id: hotelId,
+          ...payload,
+          image_mobile_url: null,
+          video_url: null,
+          video_mobile_url: null,
+          button_text: null,
+          button_link: null,
+          duration: 6,
+        });
+        toast.success('Slide creado');
+      }
+      setFormOpen(false);
+      setFormError(null);
+    } catch (mutationError) {
+      setFormError(
+        mutationError instanceof Error ? mutationError.message : 'No se pudo guardar el slide'
+      );
+    }
+  };
 
   return (
-    <DataSection
-      title="Carrusel Hero"
-      description="Gestiona las imágenes del carrusel principal."
-      isLoading={isLoading}
-      error={error}
-      data={slides || []}
-      columns={[
-        { key: 'title', label: 'Título' },
-        { key: 'image_url', label: 'Imagen', render: (item: any) => (
-          <img src={item.image_url} alt={item.title} className="w-16 h-10 object-cover rounded" />
-        )},
-        { key: 'order', label: 'Orden' },
-        { key: 'active', label: 'Estado', render: (item: any) => (
-          <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-            {item.active ? 'Activo' : 'Inactivo'}
-          </span>
-        )},
-      ]}
-      emptyMessage="No hay slides en el carrusel"
-      onAdd={() => {}}
-    />
+    <>
+      <DataSection
+        title="Carrusel Hero"
+        description="Gestiona las imágenes del carrusel principal."
+        isLoading={isLoading}
+        error={error}
+        data={items}
+        columns={[
+          { key: 'title', label: 'Título' },
+          { key: 'image_url', label: 'Imagen', render: (item: any) => (
+            <img src={item.image_url} alt={item.title} className="w-16 h-10 object-cover rounded" />
+          )},
+          { key: 'order', label: 'Orden' },
+          { key: 'active', label: 'Estado', render: (item: any) => (
+            <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+              {item.active ? 'Activo' : 'Inactivo'}
+            </span>
+          )},
+        ]}
+        emptyMessage="No hay slides en el carrusel"
+        onAdd={openNew}
+        rowActions={(item: HeroSlide) => <EditButton onClick={() => openEdit(item)} />}
+      />
+
+      <RecordDialog
+        open={formOpen}
+        title={editingId ? 'Editar slide' : 'Nuevo slide'}
+        description={
+          editingId
+            ? 'Actualiza el texto, la imagen o el orden del slide.'
+            : 'Agrega una imagen al carrusel principal.'
+        }
+        submitLabel={editingId ? 'Guardar cambios' : 'Crear slide'}
+        imageFolder="relaxweb/hero"
+        fields={[
+          { key: 'title', label: 'Título', placeholder: 'Bienvenido a Hostal Relax', wide: true },
+          { key: 'image_url', label: 'Imagen de escritorio', type: 'image', wide: true, hint: 'También se usa en móvil si no cargás una vertical desde el panel flotante.' },
+          { key: 'description', label: 'Descripción', type: 'textarea', wide: true },
+          { key: 'order', label: 'Orden', type: 'number', hint: 'Menor número aparece primero.' },
+          { key: 'active', label: 'Estado', type: 'checkbox', hint: 'Visible en el carrusel' },
+        ]}
+        values={values}
+        onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+        onSubmit={() => void submit()}
+        onClose={closeForm}
+        busy={busy}
+        error={formError}
+      />
+    </>
   );
 }
 
@@ -876,29 +1204,156 @@ function PmsImportDialog({
 // Amenities Section
 function AmenitiesSection() {
   const { data: hotels } = useHotels();
-  const selectedHotelId = hotels?.[0]?.id;
-  const { data: amenities, isLoading, error } = useAmenities(selectedHotelId || '');
+  const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
+  const hotelId = hotel?.id || '';
+  // Las amenidades viven en Supabase (`amenidades`), no llegan del PMS: el
+  // endpoint de RelaxPMS solo publica habitaciones, tarifas y reservas.
+  const { data: amenities, isLoading, error } = useAmenities(hotelId, true);
+  const createAmenity = useCreateAmenity();
+  const updateAmenity = useUpdateAmenity();
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [values, setValues] = useState<RecordValues>({});
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const items = (Array.isArray(amenities) ? amenities : []) as Amenity[];
+  const busy = createAmenity.isPending || updateAmenity.isPending;
+  const categories = Array.from(new Set(items.map((item) => item.category).filter(Boolean)));
+
+  const openNew = () => {
+    setEditingId(null);
+    setValues({
+      name: '',
+      category: categories[0] || 'Servicios',
+      icon: DEFAULT_AMENITY_ICON,
+      description: '',
+      image_url: '',
+      order: String(items.length),
+      active: true,
+    });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (amenity: Amenity) => {
+    setEditingId(amenity.id);
+    setValues({
+      name: amenity.name || '',
+      category: amenity.category || 'Servicios',
+      icon: amenity.icon || DEFAULT_AMENITY_ICON,
+      description: amenity.description || '',
+      image_url: amenity.image_url || '',
+      order: String(amenity.order ?? 0),
+      active: amenity.active,
+    });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (busy) return;
+    setFormOpen(false);
+    setFormError(null);
+  };
+
+  const submit = async () => {
+    if (!hotelId) {
+      setFormError('Falta el hotel activo');
+      return;
+    }
+    const name = toText(values.name);
+    const category = toText(values.category);
+    if (!name) {
+      setFormError('El nombre es obligatorio');
+      return;
+    }
+    if (!category) {
+      setFormError('La categoría es obligatoria');
+      return;
+    }
+    const payload = {
+      name,
+      category,
+      icon: toText(values.icon) || DEFAULT_AMENITY_ICON,
+      description: toText(values.description) || null,
+      image_url: toText(values.image_url) || null,
+      order: toNumber(values.order, items.length),
+      active: Boolean(values.active),
+    };
+    try {
+      if (editingId) {
+        await updateAmenity.mutateAsync({ id: editingId, data: payload });
+        toast.success('Amenidad actualizada');
+      } else {
+        await createAmenity.mutateAsync({ hotel_id: hotelId, value: null, ...payload });
+        toast.success('Amenidad creada');
+      }
+      setFormOpen(false);
+      setFormError(null);
+    } catch (mutationError) {
+      setFormError(
+        mutationError instanceof Error ? mutationError.message : 'No se pudo guardar la amenidad'
+      );
+    }
+  };
 
   return (
-    <DataSection
-      title="Amenidades"
-      description="Gestiona las amenidades del hotel."
-      isLoading={isLoading}
-      error={error}
-      data={amenities || []}
-      columns={[
-        { key: 'name', label: 'Nombre' },
-        { key: 'category', label: 'Categoría' },
-        { key: 'icon', label: 'Icono' },
-        { key: 'active', label: 'Estado', render: (item: any) => (
-          <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-            {item.active ? 'Activa' : 'Inactiva'}
-          </span>
-        )},
-      ]}
-      emptyMessage="No hay amenidades registradas"
-      onAdd={() => {}}
-    />
+    <>
+      <DataSection
+        title="Amenidades"
+        description="Gestiona las amenidades del hotel."
+        isLoading={isLoading}
+        error={error}
+        data={items}
+        columns={[
+          { key: 'name', label: 'Nombre' },
+          { key: 'category', label: 'Categoría' },
+          { key: 'icon', label: 'Icono' },
+          { key: 'active', label: 'Estado', render: (item: any) => (
+            <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+              {item.active ? 'Activa' : 'Inactiva'}
+            </span>
+          )},
+        ]}
+        emptyMessage="No hay amenidades registradas"
+        onAdd={openNew}
+        rowActions={(item: Amenity) => <EditButton onClick={() => openEdit(item)} />}
+      />
+
+      <RecordDialog
+        open={formOpen}
+        title={editingId ? 'Editar amenidad' : 'Nueva amenidad'}
+        description={
+          editingId
+            ? 'Actualiza los datos de la amenidad.'
+            : 'Agrega un servicio o comodidad del hotel.'
+        }
+        submitLabel={editingId ? 'Guardar cambios' : 'Crear amenidad'}
+        imageFolder="relaxweb/amenidades"
+        fields={[
+          { key: 'name', label: 'Nombre', placeholder: 'Wi-Fi', wide: true },
+          {
+            key: 'category',
+            label: 'Categoría',
+            placeholder: 'Servicios',
+            hint: categories.length
+              ? `Categorías actuales: ${categories.join(', ')}. Una categoría nueva crea un grupo en el sitio.`
+              : 'Agrupa las amenidades en el sitio (por ejemplo, Servicios).',
+          },
+          { key: 'icon', label: 'Icono', type: 'select', options: AMENITY_ICON_OPTIONS },
+          { key: 'description', label: 'Descripción', type: 'textarea', wide: true },
+          { key: 'image_url', label: 'Foto (opcional)', type: 'image', wide: true },
+          { key: 'order', label: 'Orden', type: 'number', hint: 'Menor número aparece primero.' },
+          { key: 'active', label: 'Estado', type: 'checkbox', hint: 'Visible en el sitio' },
+        ]}
+        values={values}
+        onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+        onSubmit={() => void submit()}
+        onClose={closeForm}
+        busy={busy}
+        error={formError}
+      />
+    </>
   );
 }
 
@@ -1419,50 +1874,175 @@ function GallerySection() {
 // Attractions Section
 function AttractionsSection() {
   const { data: hotels } = useHotels();
-  const selectedHotelId = hotels?.[0]?.id;
-  const { data: attractions, isLoading, error } = useAttractionsWithImages(selectedHotelId || '', true);
+  const hotel = (Array.isArray(hotels) ? hotels[0] : undefined) as Hotel | undefined;
+  const hotelId = hotel?.id || '';
+  const { data: attractions, isLoading, error } = useAttractionsWithImages(hotelId, true);
+  const createAttraction = useCreateAttraction();
+  const updateAttraction = useUpdateAttraction();
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [values, setValues] = useState<RecordValues>({});
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const items = (Array.isArray(attractions) ? attractions : []) as Array<
+    Attraction & { images?: AttractionImage[] }
+  >;
+  const busy = createAttraction.isPending || updateAttraction.isPending;
+
+  const openNew = () => {
+    setEditingId(null);
+    setValues({
+      title: '',
+      description: '',
+      location: '',
+      latitude: '',
+      longitude: '',
+      order: String(items.length),
+      active: true,
+    });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (attraction: Attraction) => {
+    setEditingId(attraction.id);
+    setValues({
+      title: attraction.title || '',
+      description: attraction.description || '',
+      location: attraction.location || '',
+      latitude:
+        typeof attraction.latitude === 'number' && Number.isFinite(attraction.latitude)
+          ? String(attraction.latitude)
+          : '',
+      longitude:
+        typeof attraction.longitude === 'number' && Number.isFinite(attraction.longitude)
+          ? String(attraction.longitude)
+          : '',
+      order: String(attraction.order ?? 0),
+      active: attraction.active,
+    });
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const closeForm = () => {
+    if (busy) return;
+    setFormOpen(false);
+    setFormError(null);
+  };
+
+  const coordinate = (value: string | boolean | undefined) => {
+    const parsed = Number.parseFloat(toText(value).replace(',', '.'));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const submit = async () => {
+    if (!hotelId) {
+      setFormError('Falta el hotel activo');
+      return;
+    }
+    const title = toText(values.title);
+    if (!title) {
+      setFormError('El nombre es obligatorio');
+      return;
+    }
+    const payload = {
+      title,
+      description: toText(values.description) || null,
+      location: toText(values.location) || null,
+      latitude: coordinate(values.latitude),
+      longitude: coordinate(values.longitude),
+      order: toNumber(values.order, items.length),
+      active: Boolean(values.active),
+    };
+    try {
+      if (editingId) {
+        await updateAttraction.mutateAsync({ id: editingId, data: payload });
+        toast.success('Atractivo actualizado');
+      } else {
+        await createAttraction.mutateAsync({ hotel_id: hotelId, ...payload });
+        toast.success('Atractivo creado');
+      }
+      setFormOpen(false);
+      setFormError(null);
+    } catch (mutationError) {
+      setFormError(
+        mutationError instanceof Error ? mutationError.message : 'No se pudo guardar el atractivo'
+      );
+    }
+  };
 
   return (
-    <DataSection
-      title="Atractivos Turísticos"
-      description="Gestiona los atractivos turísticos cercanos."
-      isLoading={isLoading}
-      error={error}
-      data={attractions || []}
-      columns={[
-        {
-          key: 'title',
-          label: 'Nombre',
-          render: (item: any) => (
-            <div className="flex items-center gap-3 min-w-0">
-              {item.images?.[0]?.image_url ? (
-                <img
-                  src={item.images[0].image_url}
-                  alt={item.title}
-                  className="w-12 h-9 object-cover rounded flex-shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-9 rounded bg-gray-100 flex-shrink-0" />
-              )}
-              <span className="font-medium text-gray-900 truncate">{item.title}</span>
-            </div>
-          ),
-        },
-        { key: 'description', label: 'Descripción', render: (item: any) => (
-          <span className="line-clamp-1">{item.description}</span>
-        )},
-        { key: 'location', label: 'Ubicación', render: (item: any) => (
-          <span className="text-gray-500">{item.location || '—'}</span>
-        )},
-        { key: 'active', label: 'Estado', render: (item: any) => (
-          <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-            {item.active ? 'Activo' : 'Inactivo'}
-          </span>
-        )},
-      ]}
-      emptyMessage="No hay atractivos turísticos registrados"
-      onAdd={() => {}}
-    />
+    <>
+      <DataSection
+        title="Atractivos Turísticos"
+        description="Gestiona los atractivos turísticos cercanos."
+        isLoading={isLoading}
+        error={error}
+        data={items}
+        columns={[
+          {
+            key: 'title',
+            label: 'Nombre',
+            render: (item: any) => (
+              <div className="flex items-center gap-3 min-w-0">
+                {item.images?.[0]?.image_url ? (
+                  <img
+                    src={item.images[0].image_url}
+                    alt={item.title}
+                    className="w-12 h-9 object-cover rounded flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-9 rounded bg-gray-100 flex-shrink-0" />
+                )}
+                <span className="font-medium text-gray-900 truncate">{item.title}</span>
+              </div>
+            ),
+          },
+          { key: 'description', label: 'Descripción', render: (item: any) => (
+            <span className="line-clamp-1">{item.description}</span>
+          )},
+          { key: 'location', label: 'Ubicación', render: (item: any) => (
+            <span className="text-gray-500">{item.location || '—'}</span>
+          )},
+          { key: 'active', label: 'Estado', render: (item: any) => (
+            <span className={`px-2 py-1 rounded-full text-xs ${item.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+              {item.active ? 'Activo' : 'Inactivo'}
+            </span>
+          )},
+        ]}
+        emptyMessage="No hay atractivos turísticos registrados"
+        onAdd={openNew}
+        rowActions={(item: Attraction) => <EditButton onClick={() => openEdit(item)} />}
+      />
+
+      <RecordDialog
+        open={formOpen}
+        title={editingId ? 'Editar atractivo' : 'Nuevo atractivo'}
+        description={
+          editingId
+            ? 'Actualiza los datos del atractivo. Las fotos se administran desde el panel flotante del sitio.'
+            : 'Agrega un lugar de interés cercano. Las fotos se cargan después desde el panel flotante.'
+        }
+        submitLabel={editingId ? 'Guardar cambios' : 'Crear atractivo'}
+        imageFolder="relaxweb/atractivos"
+        fields={[
+          { key: 'title', label: 'Nombre', placeholder: 'Cristo de la Concordia', wide: true },
+          { key: 'location', label: 'Ubicación', placeholder: 'Cerro San Pedro, Cochabamba' },
+          { key: 'order', label: 'Orden', type: 'number', hint: 'Menor número aparece primero.' },
+          { key: 'latitude', label: 'Latitud', placeholder: '-17.3841' },
+          { key: 'longitude', label: 'Longitud', placeholder: '-66.1570' },
+          { key: 'description', label: 'Descripción', type: 'textarea', wide: true },
+          { key: 'active', label: 'Estado', type: 'checkbox', hint: 'Visible en el sitio' },
+        ]}
+        values={values}
+        onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
+        onSubmit={() => void submit()}
+        onClose={closeForm}
+        busy={busy}
+        error={formError}
+      />
+    </>
   );
 }
 

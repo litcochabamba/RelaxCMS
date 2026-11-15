@@ -45,14 +45,18 @@ export function useHotel(slug: string) {
 }
 
 // Hero Slides
-export function useHeroSlides(hotelId: string) {
+export function useHeroSlides(hotelId: string, includeInactive = false) {
   return useQuery({
-    queryKey: ['heroSlides', hotelId],
+    queryKey: ['heroSlides', hotelId, includeInactive],
     queryFn: async () => {
-      const { data, error } = await db.select<HeroSlide>('hero_slides', {
-        filters: { hotel_id: hotelId, active: true },
+      const params = {
+        filters: includeInactive ? { hotel_id: hotelId } : { hotel_id: hotelId, active: true },
         order: { column: 'order', ascending: true },
-      });
+      };
+      // RLS oculta los slides inactivos al navegador: el panel los lee del servidor.
+      const { data, error } = includeInactive
+        ? await db.selectAdmin<HeroSlide>('hero_slides', params)
+        : await db.select<HeroSlide>('hero_slides', params);
       if (error) throw new Error(error);
       return data || [];
     },
@@ -261,12 +265,13 @@ export function useAmenities(hotelId: string, includeInactive = false) {
   return useQuery({
     queryKey: ['amenities', hotelId, includeInactive],
     queryFn: async () => {
-      const { data, error } = await db.select<Amenity>('amenidades', {
-        filters: includeInactive
-          ? { hotel_id: hotelId }
-          : { hotel_id: hotelId, active: true },
+      const params = {
+        filters: includeInactive ? { hotel_id: hotelId } : { hotel_id: hotelId, active: true },
         order: { column: 'order', ascending: true },
-      });
+      };
+      const { data, error } = includeInactive
+        ? await db.selectAdmin<Amenity>('amenidades', params)
+        : await db.select<Amenity>('amenidades', params);
       if (error) throw new Error(error);
       return data || [];
     },
@@ -377,10 +382,13 @@ export function useAttractionsWithImages(hotelId: string, includeInactive = fals
   return useQuery({
     queryKey: ['attractionsWithImages', hotelId, includeInactive],
     queryFn: async () => {
-      const { data: attractions, error: err1 } = await db.select<any>('atractivos_turisticos', {
+      const params = {
         filters: includeInactive ? { hotel_id: hotelId } : { hotel_id: hotelId, active: true },
         order: { column: 'order', ascending: true },
-      });
+      };
+      const { data: attractions, error: err1 } = includeInactive
+        ? await db.selectAdmin<any>('atractivos_turisticos', params)
+        : await db.select<any>('atractivos_turisticos', params);
       if (err1) throw new Error(err1);
       if (!attractions || attractions.length === 0) return [];
 

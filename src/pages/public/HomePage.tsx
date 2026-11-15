@@ -12,6 +12,11 @@ import CommentsSection from '../../components/home/CommentsSection';
 import HomeBlocksSection, { parseHomeBlocks } from '../../components/home/HomeBlocksSection';
 import { parsePromoRibbonPlacements } from '../../utils/promotions';
 import { useHotelConfig, useHotels, useHeroSlides } from '../../hooks/useQueries';
+import { useAuthStore } from '../../store/authStore';
+import DesignHero from '../../components/home/designs/DesignHero';
+import { DesignDivider, DesignSwitcher } from '../../components/home/designs/DesignParts';
+import { useDesignFonts, useDesignRootMarker, useHomeDesign } from '../../components/home/designs/registry';
+import '../../components/home/designs/designs.css';
 
 export default function HomePage() {
   const { hash } = useLocation();
@@ -33,6 +38,17 @@ export default function HomePage() {
   // La reserva rápida del panel del cliente llega como `/#reservar`. Las
   // imágenes de arriba terminan de cargar después del primer scroll y corren la
   // sección, así que se vuelve a ubicar un par de veces.
+  // Modelo de diseño de la portada: solo cambia la presentación.
+  const { design, select, switcherEnabled } = useHomeDesign(
+    configs.find((config) => config.key === 'home_design')?.value
+  );
+  const { user } = useAuthStore();
+  const isStaff = user?.role === 'admin' || user?.role === 'moderator';
+  useDesignFonts(design.fonts);
+  useDesignRootMarker(design);
+  const isClassic = design.id === 'clasico';
+  const divider = (label: string) => (isClassic ? null : <DesignDivider design={design.id} label={label} />);
+
   useEffect(() => {
     if (hash !== '#reservar') return;
     const align = (smooth: boolean) => {
@@ -52,27 +68,37 @@ export default function HomePage() {
   }, [hash]);
 
   return (
-    <main>
-      <HeroSection slides={heroSlides.length > 0 ? heroSlides : undefined} />
-      <AvailabilityBar />
+    <main className={isClassic ? undefined : `home-design home-design-${design.id}`}>
+      {isClassic ? (
+        <HeroSection slides={heroSlides.length > 0 ? heroSlides : undefined} />
+      ) : (
+        <DesignHero design={design.id} slides={heroSlides} />
+      )}
+      {isClassic ? <AvailabilityBar /> : <div className="dz-availability"><AvailabilityBar /></div>}
       <HotelShowcaseSection />
       {ribbonPlacements.includes('showcase') && <PromotionsRibbon />}
       <HomeBlocksSection blocks={blocks} after="showcase" />
+      {divider('Amenidades')}
       <AmenitiesSection />
       {ribbonPlacements.includes('amenities') && <PromotionsRibbon />}
       <HomeBlocksSection blocks={blocks} after="amenities" />
+      {divider('Habitaciones')}
       <RoomsSection />
       {ribbonPlacements.includes('rooms') && <PromotionsRibbon />}
       <HomeBlocksSection blocks={blocks} after="rooms" />
+      {divider('Reservas')}
       <BookingSection />
       {ribbonPlacements.includes('booking') && <PromotionsRibbon />}
       <HomeBlocksSection blocks={blocks} after="booking" />
-      <AttractionsSection />
+      {divider('Atractivos')}
+      {isClassic ? <AttractionsSection /> : <div id="atractivos" className="scroll-mt-20"><AttractionsSection /></div>}
       {ribbonPlacements.includes('attractions') && <PromotionsRibbon />}
       <HomeBlocksSection blocks={blocks} after="attractions" />
+      {divider('Huéspedes')}
       <CommentsSection />
       {ribbonPlacements.includes('comments') && <PromotionsRibbon />}
       <HomeBlocksSection blocks={blocks} after="comments" />
+      {(switcherEnabled || isStaff) && <DesignSwitcher active={design} onSelect={select} />}
     </main>
   );
 }

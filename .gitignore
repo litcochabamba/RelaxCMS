@@ -8,6 +8,7 @@ dist
 .cookies.txt
 .freebuff
 /supabase
+designs/
 Credenciales.md
 test-results
 playwright-report
